@@ -19,6 +19,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 use crate::hook::SESSION;
+use crate::tray::{anim_factor, SIZE, SIZE_ICONS};
 use crate::util::*;
 use crate::winlist::{self, WinInfo};
 
@@ -78,14 +79,23 @@ struct Card {
 }
 
 impl Card {
-    fn new(info: WinInfo, mw: f32, mh: f32) -> Card {
+    fn new(info: WinInfo, mw: f32, mh: f32, scale: f32) -> Card {
         let f = info.frame;
         let aspect = ((f.right - f.left).max(1) as f32 / (f.bottom - f.top).max(1) as f32).clamp(0.45, 2.6);
-        let mut bh = mh * CARD_HEIGHT;
-        let mut bw = bh * aspect;
-        if bw > mw * CARD_MAX_WIDTH {
-            bw = mw * CARD_MAX_WIDTH;
-            bh = bw / aspect;
+        let size = SIZE.load(Ordering::Relaxed).min(SIZE_ICONS) as usize;
+        let (mut bw, mut bh);
+        if size == SIZE_ICONS as usize {
+            // Icons only: a square tile with the app icon, no live preview.
+            bw = 128.0 * scale;
+            bh = bw;
+        } else {
+            let k = [1.0, 0.78, 0.58][size]; // Large, Medium, Small
+            bh = mh * CARD_HEIGHT * k;
+            bw = bh * aspect;
+            if bw > mw * CARD_MAX_WIDTH * k {
+                bw = mw * CARD_MAX_WIDTH * k;
+                bh = bw / aspect;
+            }
         }
         Card { info, thumb: 0, bw, bh, cur: Pose::default(), from: Pose::default(), to: Pose::default(), slot: 0 }
     }
@@ -364,7 +374,7 @@ impl Switcher {
         self.scale = dpi_x as f32 / 96.0;
 
         let (mw, mh) = (self.mw, self.mh);
-        self.cards = winlist::enumerate(self.hwnd).into_iter().map(|w| Card::new(w, mw, mh)).collect();
+        self.cards = winlist::enumerate(self.hwnd).into_iter().map(|w| Card::new(w, mw, mh, self.scale)).collect();
         if self.cards.is_empty() {
             SESSION.store(false, Ordering::Relaxed);
             return;
@@ -387,8 +397,11 @@ impl Switcher {
 
     unsafe fn show(&mut self) {
         let hwnd = self.hwnd;
-        for c in &mut self.cards {
-            c.attach(hwnd);
+        // Icons only skips the live previews; cards without one are drawn as icon tiles.
+        if SIZE.load(Ordering::Relaxed) != SIZE_ICONS {
+            for c in &mut self.cards {
+                c.attach(hwnd);
+            }
         }
         let screen = GetDC(hwnd);
         let dc = CreateCompatibleDC(screen);
@@ -496,7 +509,8 @@ impl Switcher {
         self.closing = true;
         let mon = self.mon;
         for (i, c) in self.cards.iter_mut().enumerate() {
-            c.to = if Some(i) == target { c.frame_pose(&mon) } else { Pose { s: c.cur.s * ENTER_SCALE, a: 0.0, ..c.cur } };
+            // Only a live preview zooms onto its window; an icon tile just fades with the rest.
+            c.to = if Some(i) == target && c.thumb != 0 { c.frame_pose(&mon) } else { Pose { s: c.cur.s * ENTER_SCALE, a: 0.0, ..c.cur } };
         }
         self.fade_to = 0.0;
         self.start_anim(CLOSE_MS);
@@ -595,7 +609,11 @@ impl Switcher {
         // Windows' "Animation effects" switch turns ours off too.
         let mut on: BOOL = 1;
         SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&mut on as *mut BOOL).cast(), 0);
-        self.dur = if on != 0 { dur } else { 1.0 };
+        // So does the tray's "Animation speed": Off, or a factor on every duration.
+        self.dur = match anim_factor() {
+            Some(k) if on != 0 => dur * k,
+            _ => 1.0,
+        };
         self.t0 = Instant::now();
         if !self.animating {
             self.animating = true;
@@ -662,7 +680,7 @@ impl Switcher {
             InvalidateRect(self.hwnd, null(), 0);
             return;
         }
-        let half = self.mh * CARD_HEIGHT / 2.0;
+        let half = self.cards.iter().map(|c| c.bh).fold(0.0, f32::max) / 2.0;
         let y = self.mh * ROW_CENTER_Y;
         let band = RECT {
             left: 0,

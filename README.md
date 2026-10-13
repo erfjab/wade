@@ -51,7 +51,8 @@ Pull or edit the code, then run the same commands as in Install.
 
 ## Uninstall
 
-1. Right-click the Wade tray icon and turn off **Start with Windows**.
+1. Right-click the Wade tray icon and turn off **Run as administrator** (if on), then
+   **Start with Windows**.
 2. Right-click it again and choose **Exit**.
 3. Delete `%LOCALAPPDATA%\Programs\Wade`.
 4. To also remove the saved choice, delete the registry key `HKCU\Software\Wade`.
@@ -74,7 +75,22 @@ Hold `Alt` and press `Tab`. Wade opens on the current window; each `Tab` moves o
 - A quick `Alt+Tab` (press and release) goes straight to the previous window without showing anything.
 - If Windows "Animation effects" is off, Wade opens and closes without animation.
 
-The tray icon menu has **Start with Windows** (on, off) and **Exit**.
+## Settings
+
+Right-click the Wade tray icon.
+
+| Setting | Options |
+|---|---|
+| Animation speed | Fast, Normal, Slow, Off |
+| Card size | Large, Medium, Small, Icons only (app icons and titles, no live previews) |
+| Start with Windows | on, off |
+| Run as administrator | on, off |
+
+If Windows "Animation effects" is off, Wade has no animation whatever the speed.
+
+**Run as administrator** lets Wade switch away from games and apps that run as administrator.
+Turning it on asks for administrator rights once; Wade then starts from a Task Scheduler task
+(named Wade) at sign-in, with no prompt. Settings are stored in `HKCUSoftwareWade`.
 
 ## Why it is light
 
@@ -82,12 +98,12 @@ The tray icon menu has **Start with Windows** (on, off) and **Exit**.
 - When the switcher is closed, no timer or loop runs.
 - The keyboard hook runs on its own thread and only posts messages, so typing never waits on drawing.
 - The drawing buffer exists only while the switcher is open.
-- No network, no admin rights, no files written, no code injected into other apps.
+- No network, no files written, no code injected into other apps. Admin rights only if you turn them on.
 
 ## Limits
 
 - While a window started with "Run as administrator" has focus, Windows does not pass the
-  keys to Wade, and the Windows Alt+Tab opens instead.
+  keys to Wade, and the Windows Alt+Tab opens instead. Turn on **Run as administrator** to fix this.
 - Minimized windows have no live preview; they show the app's large icon.
 - Only windows on the current virtual desktop are shown.
 

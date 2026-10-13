@@ -17,8 +17,10 @@ try {
     Expand-Archive "$tmp\wade.zip" "$tmp\new" -Force
     if (-not (Test-Path "$tmp\new\wade.exe")) { throw 'The download did not contain wade.exe.' }
 
-    # Close the running copy and wait until the file is free.
-    Get-Process wade -ErrorAction SilentlyContinue | Stop-Process -Force
+    # Close the running copy and wait until the file is free. A copy set to
+    # "Run as administrator" runs from its task, which can end it without rights.
+    schtasks /End /TN Wade 2>$null | Out-Null
+    Get-Process wade -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Get-Process wade -ErrorAction SilentlyContinue | Wait-Process -Timeout 10
 
     # Swap the program file, putting the old one back if anything goes wrong.
