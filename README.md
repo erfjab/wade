@@ -4,7 +4,7 @@
 
 A card-row window switcher that replaces Alt+Tab on Windows.
 
-Website: https://erfjab.github.io/wade/
+Website: https://wade.erfjab.com/
 
 - Shows your windows as live cards in one horizontal row, like recent apps on a phone.
 - Uses the system's own desktop background, slightly dimmed.
