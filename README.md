@@ -20,7 +20,8 @@ irm https://raw.githubusercontent.com/erfjab/wade/master/install.ps1 | iex
 ```
 
 The same command installs Wade the first time and updates it later. It only replaces
-the program. If the download fails, the installed version is left as it was.
+the program; settings are kept. On the first start Wade asks once for administrator rights
+(see Settings). If the download fails, the installed version is left as it was.
 
 ## Build from source
 
@@ -55,7 +56,8 @@ Pull or edit the code, then run the same commands as in Install.
    **Start with Windows**.
 2. Right-click it again and choose **Exit**.
 3. Delete `%LOCALAPPDATA%\Programs\Wade`.
-4. To also remove the saved choice, delete the registry key `HKCU\Software\Wade`.
+4. To also remove the settings, delete the registry key `HKCU\Software\Wade`. If the
+   administrator task is still there, run `schtasks /Delete /TN Wade /F` as administrator.
 
 ## Use
 

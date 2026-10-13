@@ -1,6 +1,7 @@
 # Installs or updates Wade on Windows:
 #   irm https://raw.githubusercontent.com/erfjab/wade/master/install.ps1 | iex
-# Only the program file is replaced. The "Start with Windows" choice is kept.
+# Only the program file is replaced. Settings (HKCUSoftwareWade) and the
+# "Run as administrator" task are kept.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -17,11 +18,12 @@ try {
     Expand-Archive "$tmp\wade.zip" "$tmp\new" -Force
     if (-not (Test-Path "$tmp\new\wade.exe")) { throw 'The download did not contain wade.exe.' }
 
-    # Close the running copy and wait until the file is free. A copy set to
-    # "Run as administrator" runs from its task, which can end it without rights.
-    schtasks /End /TN Wade 2>$null | Out-Null
+    # Close the running copy and wait until the file is free. A copy run as
+    # administrator can't be stopped from here, but its task can end it.
+    # (cmd keeps schtasks' "task not found" from stopping this script.)
+    cmd /c "schtasks /End /TN Wade >nul 2>&1"
     Get-Process wade -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Get-Process wade -ErrorAction SilentlyContinue | Wait-Process -Timeout 10
+    Get-Process wade -ErrorAction SilentlyContinue | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
 
     # Swap the program file, putting the old one back if anything goes wrong.
     New-Item -ItemType Directory -Force $dir | Out-Null
@@ -41,6 +43,10 @@ $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:APPDATA\Micros
 $lnk.TargetPath = $exe
 $lnk.Save()
 
+# Wade starts itself as administrator through its task; on the first install
+# it asks for that once (UAC).
 Start-Process $exe
-if ($update) { Write-Host 'Wade updated.' }
-else { Write-Host "Wade installed to $dir. Press Alt+Tab to use it." }
+if (Get-Process wade -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -lt (Get-Date).AddSeconds(-30) }) {
+    Write-Host 'Wade was updated, but the old copy is still running. Right-click its tray icon, choose Exit, then start Wade again.'
+} elseif ($update) { Write-Host 'Wade updated.' }
+else { Write-Host "Wade installed to $dir. Allow the administrator prompt once, then press Alt+Tab." }
