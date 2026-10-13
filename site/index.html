@@ -915,7 +915,7 @@ else {
     tagline.textContent = "Live demo · your turn";
   }
   for (const t of [desk, document.querySelector(".controls")]) for (const ev of ["pointerdown", "keydown", "wheel"]) t.addEventListener(ev, takeOver, { capture: true, passive: true });
-  new IntersectionObserver(([e]) => { inView = e.isIntersecting; play(); }, { threshold: 0.5 }).observe(desk);
+  new IntersectionObserver(([e]) => { inView = e.isIntersecting; play(); }, { threshold: 0.2 }).observe(desk);
   if (!auto) tagline.textContent = "Live demo · your turn";
 
   $("reset").onclick = () => {
