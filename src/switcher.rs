@@ -1,7 +1,6 @@
 //! The overlay: a row of cards with live previews drawn by DWM itself, so the
 //! window contents cost us no copying. GDI only paints the background, the
-//! selection ring, the labels and the icon strip. Timers run only while
-//! something is moving.
+//! labels and the icon strip. Timers run only while something is moving.
 
 use std::cell::RefCell;
 use std::mem::{size_of, zeroed};
@@ -48,7 +47,6 @@ const fn rgb(r: u8, g: u8, b: u8) -> COLORREF {
 const PANEL: COLORREF = rgb(0x1d, 0x22, 0x2c);
 const STRIP_ALPHA: u8 = 140; // of 255: dark glass behind the icon strip
 const STRIP_ACTIVE_ALPHA: u8 = 40; // light veil over the active app's cell
-const ACCENT: COLORREF = rgb(0x6f, 0xb3, 0xff);
 const TEXT: COLORREF = rgb(0xff, 0xff, 0xff);
 const TEXT_DIM: COLORREF = rgb(0x9a, 0xa3, 0xb2);
 const DIM: u32 = 150; // of 256: the desktop background, darkened so the windows stand out
@@ -634,7 +632,7 @@ impl Switcher {
         if t >= 1.0 {
             self.animating = false;
             KillTimer(self.hwnd, TIMER_ANIM);
-            self.fade_from = self.fade_to; // settled: the ring may show now
+            self.fade_from = self.fade_to; // settled: no fade in progress
             if self.closing {
                 self.hide();
                 return;
@@ -738,18 +736,6 @@ impl Switcher {
                 if self.closing {
                     continue; // only the previews themselves take part in the exit
                 }
-                // No ring while the card is still flying in from its window.
-                if i == self.active && self.fade_from == self.fade_to {
-                    let o = (6.0 * s) as i32;
-                    let pen = CreatePen(PS_SOLID, (3.0 * s).max(2.0) as i32, ACCENT);
-                    let old_pen = SelectObject(dc, pen);
-                    let old_brush = SelectObject(dc, GetStockObject(NULL_BRUSH));
-                    let rad = (16.0 * s) as i32;
-                    RoundRect(dc, r.left - o, r.top - o, r.right + o, r.bottom + o, rad, rad);
-                    SelectObject(dc, old_brush);
-                    SelectObject(dc, old_pen);
-                    DeleteObject(pen);
-                }
                 self.label(dc, c, &r, i == self.active);
             }
 
@@ -789,7 +775,7 @@ impl Switcher {
 
     /// The desktop background exactly as Windows draws it behind `mon`:
     /// whatever wallpaper, fit mode, slideshow image or plain color the
-    /// system uses. Dimmed a little so titles and the ring stay readable.
+    /// system uses. Dimmed a little so the titles stay readable.
     unsafe fn backdrop(&self, mon: RECT) -> Backdrop {
         let (w, h) = (mon.right - mon.left, mon.bottom - mon.top);
         let mut bi: BITMAPINFO = zeroed();
