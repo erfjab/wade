@@ -115,7 +115,7 @@ h2 { font: 700 clamp(26px, 3.6vw, 40px)/1.15 var(--display); letter-spacing: -.0
 .win.front { opacity: 1; }
 .desk.open .win { pointer-events: auto; cursor: pointer; border-radius: calc(var(--u) * 1.2); }
 .desk.moving .win { transition-duration: .16s; }
-.desk.instant .win, .desk.instant .label, .desk.instant .ring { transition: none !important; }
+.desk.instant .win, .desk.instant .label { transition: none !important; }
 .label {
   position: absolute; left: 0; top: 0; z-index: 3; display: flex; align-items: center; gap: calc(var(--u) * .7);
   white-space: nowrap; font: 500 calc(var(--u) * 1.25)/1 var(--body); color: var(--dim);
@@ -124,12 +124,6 @@ h2 { font: 700 clamp(26px, 3.6vw, 40px)/1.15 var(--display); letter-spacing: -.0
 .label .ico { width: calc(var(--u) * 2); height: calc(var(--u) * 2); font-size: calc(var(--u) * .9); }
 .label.on { color: #fff; }
 .desk.moving .label { transition-duration: .16s; }
-.ring {
-  position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; opacity: 0;
-  border: max(2px, calc(var(--u) * .3)) solid var(--accent); border-radius: calc(var(--u) * 1.7);
-  transition: opacity .15s;
-}
-.desk.open.settled .ring { opacity: 1; }
 .strip {
   position: absolute; z-index: 3; left: 50%; bottom: calc(var(--u) * 3.4); transform: translateX(-50%);
   display: flex; gap: calc(var(--u) * .5); padding: calc(var(--u) * .5); border-radius: calc(var(--u) * .9);
@@ -209,7 +203,7 @@ footer svg { width: 18px; height: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .win, .label, .ring, .veil, .strip { transition: none !important; }
+   .win, .label, .veil, .strip { transition: none !important; }
 }
 </style>
 </head>
@@ -259,7 +253,6 @@ footer svg { width: 18px; height: 18px; }
         <div class="taskbar" id="taskbar"></div>
         <div class="empty" id="empty" hidden><span>Every window is closed.</span><button class="btn" id="reopen" type="button">Open them again</button></div>
         <div class="veil"><canvas id="veil"></canvas></div>
-        <div class="ring" id="ring"></div>
         <div class="strip" id="strip"></div>
         <span class="tagline" aria-hidden="true"><i></i><span id="tagline">Live demo · playing</span></span>
       </div>
@@ -573,12 +566,6 @@ scene.add(wall);
 const CW = 4.4, CH = CW * 752 / 1280, SIDE = 0.68, ALPHA = 0.62, GAP = CW * 0.06;
 const row = new THREE.Group();
 scene.add(row);
-const ring = new THREE.Mesh(new THREE.PlaneGeometry(CW + 0.36, CH + 0.36), new THREE.MeshBasicMaterial({
-  map: tex(paint(1320, 800, (g, w, h) => { g.strokeStyle = "#6fb3ff"; g.lineWidth = 12; g.beginPath(); g.roundRect(8, 8, w - 16, h - 16, 40); g.stroke(); })),
-  transparent: true, depthWrite: false,
-}));
-ring.position.z = -0.01;
-row.add(ring);
 const cards = W.apps.map((app) => {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(CW, CH), new THREE.MeshBasicMaterial({ map: tex(paint(1280, 752, (g, w, h) => W.win(g, app, w, h, 30))), transparent: true }));
   const lw = 900, lh = 64;
@@ -612,8 +599,6 @@ function layout(pos) {
     c.label.material.opacity = fade * (ad < 0.5 ? 1 : 0.7);
     c.label.visible = fade > 0;
   }
-  const near = Math.abs(pos - Math.round(pos));
-  ring.material.opacity = Math.max(0, 1 - near * 6);
 }
 
 let wide = true;
@@ -674,7 +659,7 @@ else {
   const W = window.WADE;
   const CARD_HEIGHT = 0.62, CARD_MAX_WIDTH = 0.75, ROW_CENTER_Y = 0.45, GAP = 0.025, SIDE_SCALE = 0.68, SIDE_ALPHA = 0.62, CLOSE_DRAG = 0.12;
   const $ = (id) => document.getElementById(id);
-  const desk = $("desk"), ring = $("ring"), strip = $("strip"), taskbar = $("taskbar"), status = $("status"), empty = $("empty");
+  const desk = $("desk"), strip = $("strip"), taskbar = $("taskbar"), status = $("status"), empty = $("empty");
   const say = (s) => { status.textContent = s; };
   const icoHTML = (a) => `<span class="ico" style="background:${a.color}">${a.glyph}</span>`;
 
@@ -760,10 +745,6 @@ else {
       lab.style.maxWidth = lw + "px";
       lab.style.transform = `translate(${r.x + r.w / 2 - lw / 2}px, ${r.y - dw * 0.016 - lab.offsetHeight}px)`;
       if (jump) { el.offsetWidth; el.style.transition = ""; lab.style.transition = ""; }
-      if (!ad) {
-        const o = dw * 0.006;
-        Object.assign(ring.style, { width: r.w + 2 * o + "px", height: r.h + 2 * o + "px", transform: `translate(${r.x - o}px, ${r.y - o}px)` });
-      }
     }
     strip.innerHTML = order.map((id, i) => `<button type="button" data-i="${i}" class="${i === sel ? "on" : ""}" aria-label="${byId(id).name}">${icoHTML(byId(id))}</button>`).join("");
     desk.classList.remove("settled");
