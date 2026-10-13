@@ -83,6 +83,7 @@ Right-click the Wade tray icon.
 |---|---|
 | Animation speed | **Fast**, Normal, Slow, Off |
 | Card size | **Large**, Medium, Small, Icons only (app icons and titles, no live previews) |
+| Background | Black, 75% darker, **50% darker**, 25% darker (the desktop behind the cards) |
 | Start with Windows | **on**, off |
 | Run as administrator | **on**, off |
 

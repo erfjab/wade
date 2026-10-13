@@ -19,7 +19,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 use crate::hook::SESSION;
-use crate::tray::{anim_factor, SIZE, SIZE_ICONS};
+use crate::tray::{anim_factor, backdrop_keep, SIZE, SIZE_ICONS};
 use crate::util::*;
 use crate::winlist::{self, WinInfo};
 
@@ -51,7 +51,6 @@ const STRIP_ALPHA: u8 = 140; // of 255: dark glass behind the icon strip
 const STRIP_ACTIVE_ALPHA: u8 = 40; // light veil over the active app's cell
 const TEXT: COLORREF = rgb(0xff, 0xff, 0xff);
 const TEXT_DIM: COLORREF = rgb(0x9a, 0xa3, 0xb2);
-const DIM: u32 = 150; // of 256: the desktop background, darkened so the windows stand out
 
 #[derive(Clone, Copy, Default)]
 struct Pose {
@@ -173,6 +172,7 @@ struct Gfx {
 /// Rendering it takes tens of milliseconds, so it is kept between openings
 /// and rebuilt only when the monitor or the background changes.
 struct Backdrop {
+    keep: u32, // of 256: how much of the background's brightness is left (tray "Background")
     dc: HDC,
     bmp: HBITMAP,
     old: HGDIOBJ,
@@ -424,7 +424,7 @@ impl Switcher {
         self.gfx = Some(Gfx { dc, bmp, old, font });
         let (m, key) = (self.mon, wall_key());
         let same_mon = |b: &Backdrop| (b.mon.left, b.mon.top, b.mon.right, b.mon.bottom) == (m.left, m.top, m.right, m.bottom);
-        if !self.backdrop.as_ref().is_some_and(|b| same_mon(b) && b.key == key) {
+        if !self.backdrop.as_ref().is_some_and(|b| same_mon(b) && b.key == key && b.keep == backdrop_keep()) {
             self.backdrop = Some(self.backdrop(m));
         }
 
@@ -815,6 +815,8 @@ impl Switcher {
     /// whatever wallpaper, fit mode, slideshow image or plain color the
     /// system uses. Dimmed a little so the titles stay readable.
     unsafe fn backdrop(&self, mon: RECT) -> Backdrop {
+        // Darkened so the windows stand out; how much is the tray's "Background" setting.
+        let keep = backdrop_keep();
         let (w, h) = (mon.right - mon.left, mon.bottom - mon.top);
         let mut bi: BITMAPINFO = zeroed();
         bi.bmiHeader = BITMAPINFOHEADER {
@@ -837,11 +839,11 @@ impl Switcher {
         if !bits.is_null() {
             for px in std::slice::from_raw_parts_mut(bits as *mut u32, (w * h) as usize) {
                 let p = *px;
-                let ch = |shift: u32| ((p >> shift & 0xFF) * DIM >> 8) << shift;
+                let ch = |shift: u32| ((p >> shift & 0xFF) * keep >> 8) << shift;
                 *px = ch(0) | ch(8) | ch(16);
             }
         }
-        Backdrop { dc, bmp, old, mon, key: wall_key() }
+        Backdrop { keep, dc, bmp, old, mon, key: wall_key() }
     }
 
     /// App icon and window title, centered above the card.

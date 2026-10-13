@@ -33,6 +33,7 @@ const CMD_AUTOSTART: usize = 2;
 const CMD_ADMIN: usize = 3;
 const CMD_SPEED: usize = 10; // + index into SPEEDS
 const CMD_SIZE: usize = 20; // + index into SIZES
+const CMD_BG: usize = 30; // + index into BACKGROUNDS
 const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const WADE_KEY: &str = "Software\\Wade";
 const TASK: &str = "Wade";
@@ -42,6 +43,13 @@ pub const SIZES: [&str; 4] = ["Large", "Medium", "Small", "Icons only"];
 pub const SIZE_ICONS: u32 = 3;
 pub static SPEED: AtomicU32 = AtomicU32::new(0);
 pub static SIZE: AtomicU32 = AtomicU32::new(0);
+pub const BACKGROUNDS: [&str; 4] = ["Black", "75% darker", "50% darker", "25% darker"];
+pub static BG: AtomicU32 = AtomicU32::new(2);
+
+/// How much of the desktop background's brightness the switcher keeps, of 256.
+pub fn backdrop_keep() -> u32 {
+    [0, 64, 128, 192][BG.load(Ordering::Relaxed).min(3) as usize]
+}
 
 /// How long animations take relative to normal; None turns them off.
 pub fn anim_factor() -> Option<f32> {
@@ -51,6 +59,7 @@ pub fn anim_factor() -> Option<f32> {
 pub unsafe fn load_settings() {
     SPEED.store(get_dword("Speed").unwrap_or(0).min(3), Ordering::Relaxed);   // Fast by default
     SIZE.store(get_dword("Size").unwrap_or(0).min(3), Ordering::Relaxed);
+    BG.store(get_dword("Background").unwrap_or(2).min(3), Ordering::Relaxed);
 }
 
 pub unsafe fn create() -> HWND {
@@ -134,6 +143,8 @@ unsafe fn show_menu(hwnd: HWND) {
     let size = submenu(&SIZES, CMD_SIZE, SIZE.load(Ordering::Relaxed));
     AppendMenuW(menu, MF_POPUP, speed as usize, wide("Animation speed").as_ptr());
     AppendMenuW(menu, MF_POPUP, size as usize, wide("Card size").as_ptr());
+    let bg = submenu(&BACKGROUNDS, CMD_BG, BG.load(Ordering::Relaxed));
+    AppendMenuW(menu, MF_POPUP, bg as usize, wide("Background").as_ptr());
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
     // With the administrator task, Wade always starts with Windows.
     let start = if admin { MF_CHECKED | MF_GRAYED } else { check(has_value(RUN_KEY, "Wade")) };
@@ -157,6 +168,10 @@ unsafe fn show_menu(hwnd: HWND) {
         c if (CMD_SPEED..CMD_SPEED + SPEEDS.len()).contains(&c) => {
             SPEED.store((c - CMD_SPEED) as u32, Ordering::Relaxed);
             set_dword("Speed", (c - CMD_SPEED) as u32);
+        }
+        c if (CMD_BG..CMD_BG + BACKGROUNDS.len()).contains(&c) => {
+            BG.store((c - CMD_BG) as u32, Ordering::Relaxed);
+            set_dword("Background", (c - CMD_BG) as u32);
         }
         c if (CMD_SIZE..CMD_SIZE + SIZES.len()).contains(&c) => {
             SIZE.store((c - CMD_SIZE) as u32, Ordering::Relaxed);
