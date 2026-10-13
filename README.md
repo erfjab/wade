@@ -90,7 +90,7 @@ If Windows "Animation effects" is off, Wade has no animation whatever the speed.
 
 **Run as administrator** lets Wade switch away from games and apps that run as administrator.
 Turning it on asks for administrator rights once; Wade then starts from a Task Scheduler task
-(named Wade) at sign-in, with no prompt. Settings are stored in `HKCUSoftwareWade`.
+(named Wade) at sign-in, with no prompt. Settings are stored in `HKCU\Software\Wade`.
 
 ## Why it is light
 
