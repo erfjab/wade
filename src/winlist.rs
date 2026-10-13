@@ -44,7 +44,7 @@ unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> BOOL {
 }
 
 unsafe fn eligible(h: HWND) -> bool {
-    if IsWindowVisible(h) == 0 || GetWindowTextLengthW(h) == 0 {
+    if IsWindowVisible(h) == 0 || title(h).is_empty() {
         return false;
     }
     let ex = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32;
@@ -67,11 +67,17 @@ unsafe fn eligible(h: HWND) -> bool {
     !matches!(class.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd")
 }
 
+/// The window title. InternalGetWindowText never sends the window a message,
+/// so a hung or busy app can't stall the switcher.
+unsafe fn title(h: HWND) -> Vec<u16> {
+    let mut buf = vec![0u16; 512];
+    let n = InternalGetWindowText(h, buf.as_mut_ptr(), buf.len() as i32);
+    buf.truncate(n.max(0) as usize);
+    buf
+}
+
 unsafe fn info(h: HWND) -> WinInfo {
-    let len = GetWindowTextLengthW(h);
-    let mut title = vec![0u16; len as usize + 1];
-    let n = GetWindowTextW(h, title.as_mut_ptr(), len + 1);
-    title.truncate(n.max(0) as usize);
+    let title = title(h);
 
     let minimized = IsIconic(h) != 0;
     let mut window: RECT = zeroed();
@@ -94,7 +100,11 @@ unsafe fn info(h: HWND) -> WinInfo {
             frame = window;
         }
     }
-    WinInfo { hwnd: h, title, icon: icon_for(h), exe: exe_path(h), minimized, frame }
+    // The window's own icon costs a message round trip per window; it is only
+    // needed when there is no executable to take a sharp icon from.
+    let exe = exe_path(h);
+    let icon = if exe.is_empty() { icon_for(h) } else { class_icon(h) };
+    WinInfo { hwnd: h, title, icon, exe, minimized, frame }
 }
 
 unsafe fn exe_path(h: HWND) -> Vec<u16> {
@@ -154,6 +164,11 @@ unsafe fn icon_for(h: HWND) -> HICON {
             return result as HICON;
         }
     }
+    class_icon(h)
+}
+
+/// The window class's icon, or the generic one; reading it sends no message.
+unsafe fn class_icon(h: HWND) -> HICON {
     for index in [GCLP_HICON, GCLP_HICONSM] {
         let icon = GetClassLongPtrW(h, index);
         if icon != 0 {

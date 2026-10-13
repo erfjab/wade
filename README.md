@@ -81,16 +81,19 @@ Right-click the Wade tray icon.
 
 | Setting | Options |
 |---|---|
-| Animation speed | Fast, Normal, Slow, Off |
-| Card size | Large, Medium, Small, Icons only (app icons and titles, no live previews) |
-| Start with Windows | on, off |
-| Run as administrator | on, off |
+| Animation speed | **Fast**, Normal, Slow, Off |
+| Card size | **Large**, Medium, Small, Icons only (app icons and titles, no live previews) |
+| Start with Windows | **on**, off |
+| Run as administrator | **on**, off |
+
+Defaults are in bold.
 
 If Windows "Animation effects" is off, Wade has no animation whatever the speed.
 
 **Run as administrator** lets Wade switch away from games and apps that run as administrator.
-Turning it on asks for administrator rights once; Wade then starts from a Task Scheduler task
-(named Wade) at sign-in, with no prompt. Settings are stored in `HKCU\Software\Wade`.
+The first start asks for administrator rights once (UAC); Wade then starts from a Task Scheduler
+task (named Wade) at sign-in, with no prompt. If you decline, Wade runs normally and does not ask
+again; you can turn it on later from the menu. Settings are stored in `HKCU\Software\Wade`.
 
 ## Why it is light
 

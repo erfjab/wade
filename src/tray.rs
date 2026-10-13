@@ -40,7 +40,7 @@ const TASK: &str = "Wade";
 pub const SPEEDS: [&str; 4] = ["Fast", "Normal", "Slow", "Off"];
 pub const SIZES: [&str; 4] = ["Large", "Medium", "Small", "Icons only"];
 pub const SIZE_ICONS: u32 = 3;
-pub static SPEED: AtomicU32 = AtomicU32::new(1);
+pub static SPEED: AtomicU32 = AtomicU32::new(0);
 pub static SIZE: AtomicU32 = AtomicU32::new(0);
 
 /// How long animations take relative to normal; None turns them off.
@@ -49,7 +49,7 @@ pub fn anim_factor() -> Option<f32> {
 }
 
 pub unsafe fn load_settings() {
-    SPEED.store(get_dword("Speed").unwrap_or(1).min(3), Ordering::Relaxed);
+    SPEED.store(get_dword("Speed").unwrap_or(0).min(3), Ordering::Relaxed);   // Fast by default
     SIZE.store(get_dword("Size").unwrap_or(0).min(3), Ordering::Relaxed);
 }
 
@@ -177,8 +177,9 @@ unsafe fn quit(hwnd: HWND) {
 // has focus. Creating the task needs one UAC prompt; `--admin-task` is that
 // short elevated run of this same exe.
 
+/// On by default; off once turned off in the menu or the first UAC prompt was declined.
 pub fn admin_mode() -> bool {
-    unsafe { get_dword("Admin") == Some(1) }
+    unsafe { get_dword("Admin") != Some(0) }
 }
 
 pub fn is_elevated() -> bool {
@@ -244,7 +245,7 @@ pub fn create_task() -> i32 {
 }
 
 /// Asks for administrator rights once, registers the task and hands over to it.
-unsafe fn admin_on() -> bool {
+pub unsafe fn admin_on() -> bool {
     let Ok(exe) = std::env::current_exe() else { return false };
     let (verb, file, params) = (wide("runas"), wide(&exe.display().to_string()), wide("--admin-task"));
     let mut sei: SHELLEXECUTEINFOW = zeroed();
@@ -254,7 +255,8 @@ unsafe fn admin_on() -> bool {
     sei.lpFile = file.as_ptr();
     sei.lpParameters = params.as_ptr();
     if ShellExecuteExW(&mut sei) == 0 || sei.hProcess.is_null() {
-        return false; // UAC declined
+        set_dword("Admin", 0); // UAC declined: don't ask again on every start
+        return false;
     }
     WaitForSingleObject(sei.hProcess, INFINITE);
     let mut code = 1u32;

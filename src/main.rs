@@ -42,7 +42,8 @@ fn main() {
         tray::load_settings();
         // Set to run as administrator but started normally (Start menu, installer):
         // hand over to the task, which starts Wade elevated without a UAC prompt.
-        if tray::admin_mode() && !tray::is_elevated() && tray::run_task() {
+        // Administrator is the default: the first start asks once (UAC) and sets up the task.
+        if tray::admin_mode() && !tray::is_elevated() && (tray::run_task() || tray::admin_on()) {
             return;
         }
 

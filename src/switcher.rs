@@ -41,6 +41,7 @@ const CLOSE_DRAG: f32 = 0.12; // drag up this far (of monitor height) to close
 
 const TIMER_ANIM: usize = 1;
 const TIMER_WATCH: usize = 2;
+const TIMER_FAILSAFE: usize = 3;
 
 const fn rgb(r: u8, g: u8, b: u8) -> COLORREF {
     r as u32 | (g as u32) << 8 | (b as u32) << 16
@@ -313,6 +314,13 @@ impl Switcher {
             WM_WADE_CANCEL => self.dismiss(None),
             WM_WADE_CLOSE => self.close_active(),
             WM_TIMER if wparam == TIMER_ANIM => self.tick(),
+            // The closing animation normally hides the overlay; this makes sure it never stays up.
+            WM_TIMER if wparam == TIMER_FAILSAFE => {
+                KillTimer(self.hwnd, TIMER_FAILSAFE);
+                if self.closing || (!SESSION.load(Ordering::Relaxed) && self.visible) {
+                    self.hide();
+                }
+            }
             WM_TIMER if wparam == TIMER_WATCH => {
                 // Safety net: the overlay never outlives a held Alt key.
                 if GetAsyncKeyState(VK_MENU as i32) >= 0 {
@@ -459,6 +467,7 @@ impl Switcher {
         }
         KillTimer(self.hwnd, TIMER_ANIM);
         KillTimer(self.hwnd, TIMER_WATCH);
+        KillTimer(self.hwnd, TIMER_FAILSAFE);
         self.animating = false;
         if self.drag.take().is_some() {
             ReleaseCapture();
@@ -514,6 +523,7 @@ impl Switcher {
         }
         self.fade_to = 0.0;
         self.start_anim(CLOSE_MS);
+        SetTimer(self.hwnd, TIMER_FAILSAFE, (self.dur as u32).max(1) + 500, None);
     }
 
     unsafe fn nav(&mut self, step: i32) {
@@ -598,6 +608,14 @@ impl Switcher {
                 c.cur = Pose { x: c.to.x - dx, a: 0.0, ..c.to };
             }
         }
+        // Fast Tabs would otherwise pile up previews still fading at the ends, each a
+        // live DWM thumbnail; the older ones are nearly gone, so drop them now.
+        if !ghosts.is_empty() {
+            for g in &mut self.ghosts {
+                g.detach();
+            }
+            self.ghosts.clear();
+        }
         self.ghosts.extend(ghosts);
     }
 
@@ -630,7 +648,9 @@ impl Switcher {
         // otherwise the zoom just reads as a cross-fade with the window below.
         let fading = self.fade_from != self.fade_to;
         let e = 1.0 - (1.0 - t).powi(if fading { 2 } else { 3 });
-        let full = !self.ghosts.is_empty() || self.closing || fading; // open/close moves cards outside the row band
+        // Open/close move cards (and their titles) outside the row band; ghosts are
+        // DWM previews that slide inside it and need no full-screen repaint.
+        let full = self.closing || fading;
         if fading && self.alpha != self.fade_to {
             // Fading in eases out so the first frame already shows; a linear ramp
             // from zero left the screen looking unchanged for ~100 ms.
