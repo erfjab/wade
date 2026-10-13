@@ -1,0 +1,50 @@
+# Builds Wade for Windows and attaches it to a GitHub release.
+# Run it by pushing a tag: `git tag v0.1.0 && git push origin v0.1.0`.
+# Every other push and pull request only runs a quick `cargo check` (no optimized build).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+    paths-ignore: ["**.md"]
+  pull_request:
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# A newer push to the same branch cancels the run that is still going.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  check:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: check
+      - run: cargo check --locked
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release
+      - run: cargo build --locked --release
+      - shell: pwsh
+        run: Compress-Archive -Path target/release/wade.exe -DestinationPath wade-windows-x64.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: wade-windows-x64.zip
+          generate_release_notes: true
