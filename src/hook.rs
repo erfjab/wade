@@ -13,7 +13,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     VK_RMENU, VK_SHIFT, VK_TAB, VK_UP,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, PostMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
+    CallNextHookEx, GetClassNameW, GetForegroundWindow, GetMessageW, PostMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
     HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, LLKHF_INJECTED, MSG, WH_KEYBOARD_LL, WM_KEYDOWN,
     WM_SYSKEYDOWN,
 };
@@ -59,6 +59,12 @@ unsafe fn handle(msg: u32, k: &KBDLLHOOKSTRUCT) -> bool {
     let session = SESSION.load(Ordering::Relaxed);
 
     if vk == VK_TAB {
+        // Windows' own switcher is already up: Alt went down over a window run as
+        // administrator, where this hook sees no keys, so Windows took that Alt+Tab.
+        // Leave the rest of it to Windows instead of opening a second switcher on top.
+        if !session && alt && stock_switcher_open() {
+            return false;
+        }
         if down && alt {
             let back = GetAsyncKeyState(VK_SHIFT as i32) < 0;
             if session {
@@ -102,4 +108,12 @@ unsafe fn handle(msg: u32, k: &KBDLLHOOKSTRUCT) -> bool {
         return true;
     }
     matches!(vk, VK_RETURN | VK_LEFT | VK_RIGHT | VK_UP | VK_DELETE)
+}
+
+/// True when the foreground window is Windows' Alt+Tab (Windows 11, then Windows 10).
+unsafe fn stock_switcher_open() -> bool {
+    let mut buf = [0u16; 64];
+    let n = GetClassNameW(GetForegroundWindow(), buf.as_mut_ptr(), buf.len() as i32).max(0) as usize;
+    let class = String::from_utf16_lossy(&buf[..n]);
+    class == "XamlExplorerHostIslandWindow" || class == "MultitaskingViewFrame"
 }
