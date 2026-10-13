@@ -44,7 +44,12 @@ jobs:
       - run: cargo build --locked --release
       - shell: pwsh
         run: Compress-Archive -Path target/release/wade.exe -DestinationPath wade-windows-x64.zip
+      # The release notes are the tag's message: `git tag -a v0.1.1 -m "What changed"`.
+      - shell: pwsh
+        run: |
+          git fetch --force origin "refs/tags/${{ github.ref_name }}:refs/tags/${{ github.ref_name }}"
+          git tag -l --format='%(contents)' "${{ github.ref_name }}" > notes.md
       - uses: softprops/action-gh-release@v2
         with:
           files: wade-windows-x64.zip
-          generate_release_notes: true
+          body_path: notes.md
