@@ -4,6 +4,8 @@
 
 A card-row window switcher that replaces Alt+Tab on Windows.
 
+Website: https://erfjab.github.io/wade/
+
 - Shows your windows as live cards in one horizontal row, like recent apps on a phone.
 - Uses the system's own desktop background, slightly dimmed.
 - Runs in the background and starts with Windows.
@@ -105,4 +107,5 @@ Only one Wade runs at a time. A second copy exits right away.
 | `src/winlist.rs` | finds windows and brings the chosen one to the front |
 | `src/switcher.rs` | card row, animation, drawing and mouse |
 | `src/tray.rs` | tray icon, start with Windows, exit |
+| `site/` | website, published to GitHub Pages |
 | `assets/` | logo (`logo.svg`) and the app icon embedded in `wade.exe` |

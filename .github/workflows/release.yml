@@ -7,9 +7,9 @@ on:
   push:
     tags: ["v*"]
     branches: ["**"]
-    paths-ignore: ["**.md"]
+    paths-ignore: ["site/**", "**.md"]
   pull_request:
-    paths-ignore: ["**.md"]
+    paths-ignore: ["site/**", "**.md"]
   workflow_dispatch:
 
 permissions:

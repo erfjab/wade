@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta property="og:title" content="Wade · Alt+Tab, as a row of cards">
+<meta property="og:description" content="Replaces Windows Alt+Tab with a row of live window cards.">
+<link rel="icon" href="favicon.png">
+<title>Wade · Alt+Tab, as a row of cards</title>
+<meta name="description" content="Wade replaces Windows Alt+Tab with a row of live window cards. Free, open source, and idle at zero CPU.">
+<meta name="theme-color" content="#0b0e13">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
+</script>
+<style>
+/* Layout: a stacked hero (headline, then the live 3D row), then a working replica of the switcher, then plain sections.
+   Palette: the switcher's own colors (src/switcher.rs PANEL, ACCENT, TEXT_DIM) on the logo's near-black. */
+:root {
+  --bg: #0b0e13;
+  --panel: #151a23;
+  --panel-2: #1d222c;
+  --line: #262d38;
+  --fg: #e9edf3;
+  --dim: #9aa3b2;
+  --faint: #5d6675;
+  --accent: #6fb3ff;
+  --display: "Sora", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--bg); }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.65 var(--body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.accent { color: var(--accent); }
+kbd {
+  display: inline-block; min-width: 1.9em; padding: 0 .45em; text-align: center;
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px;
+  background: var(--panel-2); color: var(--fg); font: 500 .8em/1.7 var(--mono);
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: clamp(16px, 5vw, 56px); }
+
+/* ── hero ── */
+.hero { padding-block: clamp(28px, 6vw, 64px) 0; }
+.brand { display: flex; align-items: center; gap: 10px; font: 600 18px var(--display); margin: 0 0 clamp(28px, 6vw, 56px); }
+.brand svg { width: 30px; height: 30px; }
+.brand span { color: var(--faint); font: 400 13px var(--mono); margin-inline-start: 6px; }
+h1 { font: 700 clamp(36px, 6.4vw, 76px)/1.04 var(--display); letter-spacing: -.035em; margin: 0; text-wrap: balance; max-width: 13ch; }
+h1 em { font-style: normal; color: var(--accent); }
+.hero-row > div { flex: 1 1 320px; min-width: 0; max-width: 520px; }
+.hero-row { display: flex; flex-wrap: wrap; gap: 24px 48px; align-items: end; justify-content: space-between; }
+.lead { color: var(--dim); font-size: clamp(16px, 1.7vw, 18px); max-width: 44ch; margin: 0; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  font: 600 14px var(--display); text-decoration: none; transition: border-color .15s, transform .15s;
+}
+.btn:hover { border-color: var(--faint); transform: translateY(-1px); }
+.btn.primary { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.btn.primary:hover { background: #fff; }
+.btn.star:hover .accent { display: inline-block; transform: rotate(72deg) scale(1.15); }
+.btn.star .accent { display: inline-block; transition: transform .3s; }
+.stage { position: relative; height: clamp(300px, 46vw, 560px); margin-top: clamp(16px, 3vw, 32px); }
+#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.stage::before, .stage::after { content: ""; position: absolute; left: 0; right: 0; height: 30%; pointer-events: none; }
+.stage::before { top: 0; height: 22%; background: linear-gradient(var(--bg), transparent); z-index: 1; }
+.stage::after { bottom: 0; background: linear-gradient(transparent, var(--bg)); }
+.hud { position: absolute; z-index: 1; left: clamp(16px, 5vw, 56px); bottom: 18px; display: flex; gap: 6px; align-items: center; color: var(--faint); font: 12px var(--mono); }
+.hud kbd { transition: background .12s, color .12s, transform .12s; }
+.hud kbd.held { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.hud kbd.hit { background: var(--accent); color: var(--bg); border-color: var(--accent); transform: translateY(1px); }
+
+/* ── sections ── */
+section.block { padding-block: clamp(56px, 9vw, 104px) 0; }
+.head { display: grid; gap: 10px; margin-bottom: 28px; max-width: 62ch; }
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0; }
+h2 { font: 700 clamp(26px, 3.6vw, 40px)/1.15 var(--display); letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+.head p { color: var(--dim); margin: 0; }
+.note { color: var(--faint); font-size: 14px; margin: 16px 0 0; }
+
+/* ── demo: a desktop at 16:10 with the switcher on top ── */
+.desk {
+  --u: 9px; /* 1% of the desktop width, set by script */
+  position: relative; width: 100%; max-width: 980px; aspect-ratio: 16 / 10; margin: 0 auto;
+  border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #0e1626;
+  touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: default;
+  box-shadow: 0 40px 80px -40px rgba(0, 0, 0, .8);
+}
+.desk:focus-visible { outline-offset: 4px; border-radius: 14px; }
+.desk canvas.wall { position: absolute; inset: 0; width: 100%; height: 100%; }
+.taskbar {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 6%; z-index: 1;
+  background: rgba(16, 20, 28, .86); backdrop-filter: blur(12px); border-top: 1px solid rgba(255, 255, 255, .06);
+  display: flex; justify-content: center; align-items: center; gap: calc(var(--u) * .5);
+}
+.taskbar button { all: unset; position: relative; width: calc(var(--u) * 3.2); height: 80%; display: grid; place-items: center; border-radius: calc(var(--u) * .5); cursor: pointer; }
+.taskbar button:hover { background: rgba(255, 255, 255, .07); }
+.taskbar button.front::after { content: ""; position: absolute; bottom: 6%; width: 36%; height: 2px; border-radius: 2px; background: var(--accent); }
+.ico { display: grid; place-items: center; border-radius: 22%; color: #fff; font: 700 1em/1 var(--mono); }
+.taskbar .ico { width: calc(var(--u) * 1.9); height: calc(var(--u) * 1.9); font-size: calc(var(--u) * .9); }
+.veil { position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; transition: opacity .26s ease-out; }
+.veil canvas { width: 100%; height: 100%; display: block; filter: brightness(.59); }
+.desk.open .veil { opacity: 1; pointer-events: auto; }
+.win {
+  position: absolute; left: 0; top: 0; width: 100%; height: 94%; z-index: 3;
+  transform-origin: 0 0; border-radius: 6px; opacity: 0; pointer-events: none;
+  transition: transform .26s cubic-bezier(.2, .8, .2, 1), opacity .26s ease-out;
+}
+.win.front { opacity: 1; }
+.desk.open .win { pointer-events: auto; cursor: pointer; border-radius: calc(var(--u) * 1.2); }
+.desk.moving .win { transition-duration: .16s; }
+.desk.instant .win, .desk.instant .label, .desk.instant .ring { transition: none !important; }
+.label {
+  position: absolute; left: 0; top: 0; z-index: 3; display: flex; align-items: center; gap: calc(var(--u) * .7);
+  white-space: nowrap; font: 500 calc(var(--u) * 1.25)/1 var(--body); color: var(--dim);
+  opacity: 0; pointer-events: none; transition: transform .26s cubic-bezier(.2, .8, .2, 1), opacity .2s;
+}
+.label .ico { width: calc(var(--u) * 2); height: calc(var(--u) * 2); font-size: calc(var(--u) * .9); }
+.label.on { color: #fff; }
+.desk.moving .label { transition-duration: .16s; }
+.ring {
+  position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; opacity: 0;
+  border: max(2px, calc(var(--u) * .3)) solid var(--accent); border-radius: calc(var(--u) * 1.7);
+  transition: opacity .15s;
+}
+.desk.open.settled .ring { opacity: 1; }
+.strip {
+  position: absolute; z-index: 3; left: 50%; bottom: calc(var(--u) * 3.4); transform: translateX(-50%);
+  display: flex; gap: calc(var(--u) * .5); padding: calc(var(--u) * .5); border-radius: calc(var(--u) * .9);
+  background: rgba(0, 0, 0, .55); opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.desk.open .strip { opacity: 1; pointer-events: auto; }
+.strip button { all: unset; width: calc(var(--u) * 4); height: calc(var(--u) * 4); display: grid; place-items: center; border-radius: calc(var(--u) * .9); cursor: pointer; }
+.strip button.on { background: rgba(255, 255, 255, .16); }
+.strip .ico { width: calc(var(--u) * 2.6); height: calc(var(--u) * 2.6); font-size: calc(var(--u) * 1.15); }
+.empty { position: absolute; inset: 0 0 6%; z-index: 1; display: grid; place-content: center; gap: 12px; text-align: center; color: var(--dim); font-size: 14px; }
+.empty[hidden] { display: none; }
+.empty button { justify-self: center; }
+.controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 18px auto 0; max-width: 980px; }
+.controls button {
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg); font: 500 13px var(--body);
+}
+.controls button:hover { border-color: var(--faint); }
+.controls button:active { transform: translateY(1px); }
+.controls kbd { font-size: 11px; }
+.controls button.pressed { background: var(--accent); border-color: var(--accent); color: var(--bg); transform: translateY(1px); }
+.controls button.pressed kbd { background: var(--bg); color: var(--fg); border-color: var(--bg); }
+.status { text-align: center; color: var(--faint); font: 12.5px var(--mono); margin: 12px 0 0; min-height: 1.6em; }
+.status b { color: var(--accent); font-weight: 500; }
+.reset { display: block; margin: 6px auto 0; padding: 4px 8px; border: 0; background: none; color: var(--faint); font: 12px var(--mono); cursor: pointer; opacity: .7; }
+.reset:hover { opacity: 1; color: var(--dim); text-decoration: underline; text-underline-offset: 3px; }
+/* Marks the desktop as a playground: a corner tag, and a live dot while it plays itself. */
+.tagline {
+  position: absolute; z-index: 6; bottom: calc(6% + var(--u) * 1.4); right: calc(var(--u) * 1.4); pointer-events: none;
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px 5px 9px; border-radius: 999px;
+  background: rgba(11, 14, 19, .78); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, .1);
+  font: 500 11.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--fg);
+}
+.tagline i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.desk.auto .tagline i { animation: live 1.2s ease-in-out infinite; }
+@keyframes live { 50% { opacity: .25; } }
+
+/* ── features ── */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.grid article { background: var(--bg); padding: 26px 24px; min-width: 0; }
+.grid .tag { font: 500 12px var(--mono); color: var(--accent); }
+.grid h3 { font: 600 18px/1.3 var(--display); margin: 10px 0 6px; }
+.grid p { margin: 0; color: var(--dim); font-size: 15px; }
+
+/* ── keys ── */
+.keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 0 40px; }
+.keys div { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.keys span { color: var(--dim); text-align: end; font-size: 15px; }
+.keys b { font-weight: 400; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; color: var(--faint); font-size: 13px; }
+
+/* ── install ── */
+.term { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; max-width: 860px; }
+.term-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); color: var(--faint); font: 12.5px var(--mono); }
+.copy { all: unset; cursor: pointer; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); color: var(--dim); }
+.copy:hover { color: var(--fg); border-color: var(--faint); }
+.copy:focus-visible { outline: 2px solid var(--accent); }
+.term pre { margin: 0; padding: 18px 16px; overflow-x: auto; font: 14px/1.6 var(--mono); }
+
+/* ── follow: same cell grid as the features, one wide link per cell ── */
+.links { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.links a { position: relative; display: grid; gap: 2px; padding: 26px 64px 26px 24px; background: var(--bg); text-decoration: none; min-width: 0; transition: background .15s; }
+.links a:hover { background: var(--panel); }
+.links .tag { font: 500 12px var(--mono); color: var(--accent); }
+.links b { font: 600 20px/1.3 var(--display); margin-top: 8px; overflow-wrap: anywhere; }
+.links small { color: var(--dim); font-size: 15px; }
+.links .go { position: absolute; top: 22px; right: 22px; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--dim); font: 15px var(--mono); transition: color .15s, border-color .15s, transform .15s; }
+.links a:hover .go { color: var(--bg); background: var(--fg); border-color: var(--fg); transform: translate(2px, -2px); }
+
+main { padding-bottom: clamp(72px, 10vw, 128px); }
+footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-block: 26px; border-top: 1px solid var(--line); color: var(--faint); font: 13px var(--mono); }
+footer span:first-child { display: flex; align-items: center; gap: 8px; color: var(--dim); }
+footer svg { width: 18px; height: 18px; }
+
+@media (max-width: 560px) {
+  .controls button { padding: 9px 11px; }
+  .hud { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .win, .label, .ring, .veil, .strip { transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mark" viewBox="0 0 64 64">
+    <rect width="64" height="64" rx="14" fill="#000"/>
+    <g transform="translate(6.4 6.4) scale(0.8)" fill="#fff">
+      <rect x="1" y="25" width="5" height="14" rx="1.5"/><rect x="58" y="25" width="5" height="14" rx="1.5"/>
+      <rect x="9" y="20" width="10" height="24" rx="2.5"/><rect x="45" y="20" width="10" height="24" rx="2.5"/>
+      <rect x="22" y="14" width="20" height="36" rx="4"/>
+    </g>
+  </symbol>
+</svg>
+
+<main>
+  <header class="hero">
+    <div class="wrap">
+      <p class="brand"><svg aria-hidden="true"><use href="#mark"/></svg>Wade<span>for windows</span></p>
+      <div class="hero-row">
+        <h1>Alt+Tab, as a <em>row of cards.</em></h1>
+        <div>
+          <p class="lead">Wade replaces the Windows switcher with your open windows laid out side by side, live, like recent apps on a phone. Hold <kbd>Alt</kbd>, tap <kbd>Tab</kbd>, let go.</p>
+          <div class="cta">
+            <a class="btn primary" href="#install">Install</a>
+            <a class="btn star" href="https://github.com/erfjab/wade"><span class="accent">★</span> Like it? Give it a star</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="stage">
+      <canvas id="scene" aria-hidden="true"></canvas>
+      <div class="hud" aria-hidden="true"><kbd id="hud-alt" class="held">Alt</kbd>+<kbd id="hud-tab">Tab</kbd><span id="hud-name"></span></div>
+    </div>
+  </header>
+
+  <section class="block" id="try">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow">Try it</p>
+        <h2>The real switcher, in your browser.</h2>
+        <p>Your browser keeps Alt+Tab for itself, so here <kbd>Tab</kbd> stands in for it and <kbd>Enter</kbd> for letting go of Alt. Click the desktop first. On a phone, use the buttons, tap the cards, or swipe the middle card up.</p>
+      </div>
+      <div class="desk" id="desk" tabindex="0" role="application" aria-label="Wade demo desktop. Press Tab to open the switcher.">
+        <canvas class="wall" id="wall"></canvas>
+        <div class="taskbar" id="taskbar"></div>
+        <div class="empty" id="empty" hidden><span>Every window is closed.</span><button class="btn" id="reopen" type="button">Open them again</button></div>
+        <div class="veil"><canvas id="veil"></canvas></div>
+        <div class="ring" id="ring"></div>
+        <div class="strip" id="strip"></div>
+        <span class="tagline" aria-hidden="true"><i></i><span id="tagline">Live demo · playing</span></span>
+      </div>
+      <div class="controls">
+        <button type="button" id="b-next"><kbd>Alt</kbd>+<kbd>Tab</kbd> next</button>
+        <button type="button" id="b-prev"><kbd>⇧</kbd> back</button>
+        <button type="button" id="b-go">Let go of <kbd>Alt</kbd></button>
+        <button type="button" id="b-close"><kbd>↑</kbd> close window</button>
+        <button type="button" id="b-esc"><kbd>Esc</kbd> cancel</button>
+      </div>
+      <p class="status" id="status" aria-live="polite">Press Tab, or the first button.</p>
+      <button class="reset" id="reset" type="button">reset demo</button>
+    </div>
+  </section>
+
+  <section class="block" id="features">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow">What it does</p>
+        <h2>Small, quick, and out of the way.</h2>
+      </div>
+      <div class="grid">
+        <article><span class="tag">live</span><h3>Real previews</h3><p>Windows draws each card itself with DWM thumbnails, so videos keep playing and text stays sharp. Wade copies no images.</p></article>
+        <article><span class="tag">0 % cpu</span><h3>Idle means idle</h3><p>When the switcher is closed, no timer or loop runs. The keyboard hook sits on its own thread and only posts messages.</p></article>
+        <article><span class="tag">tap</span><h3>Quick switch</h3><p>A fast Alt+Tab, pressed and released, jumps straight to the previous window without drawing anything.</p></article>
+        <article><span class="tag">↑ close</span><h3>Close from the row</h3><p>Press <kbd>↑</kbd> or <kbd>Delete</kbd>, or drag the middle card up, to close a window without leaving the switcher.</p></article>
+        <article><span class="tag">motion</span><h3>Zooms where it should</h3><p>Your window shrinks into the row from where it sits, and the card you pick grows back onto the real window. With Windows animations off, Wade skips them too.</p></article>
+        <article><span class="tag">startup</span><h3>Starts with Windows</h3><p>On by default and switchable from the tray icon. No admin rights, no network, no files written, no code injected into other apps.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="keys">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow">Keys</p>
+        <h2>Everything from the keyboard, or the mouse.</h2>
+      </div>
+      <div class="keys">
+        <div><b><kbd>Alt</kbd>+<kbd>Tab</kbd></b><span>open, then next card</span></div>
+        <div><b><kbd>Tab</kbd> <kbd>⇧ Tab</kbd> <kbd>→</kbd> <kbd>←</kbd> wheel</b><span>next / previous card</span></div>
+        <div><b>let go of <kbd>Alt</kbd> <kbd>Enter</kbd> click</b><span>switch</span></div>
+        <div><b><kbd>↑</kbd> <kbd>Delete</kbd> drag up</b><span>close that window</span></div>
+        <div><b><kbd>Esc</kbd></b><span>cancel</span></div>
+        <div><b>tray icon</b><span>start with Windows, exit</span></div>
+      </div>
+      <p class="note">The row loops: from the last card back to the first.</p>
+    </div>
+  </section>
+
+  <section class="block" id="install">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow">Install</p>
+        <h2>One line in PowerShell.</h2>
+        <p>The same command installs Wade the first time and updates it later. If the download fails, the installed version is left as it was.</p>
+      </div>
+      <div class="term">
+        <div class="term-head"><span>powershell</span><button class="copy" id="copy" type="button">copy</button></div>
+        <pre><span class="accent">❯</span> <code id="cmd">irm https://raw.githubusercontent.com/erfjab/wade/master/install.ps1 | iex</code></pre>
+      </div>
+      <p class="note">Installs to %LOCALAPPDATA%\Programs\Wade. Windows 10 and 11.</p>
+    </div>
+  </section>
+
+  <section class="block" id="follow">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow">Stay updated</p>
+        <h2>News on Telegram, code on GitHub.</h2>
+        <p>New versions are posted on the Telegram channel. If Wade saves you a few seconds a day, a star on GitHub really helps.</p>
+      </div>
+      <div class="links">
+        <a href="https://t.me/Erfjabs"><span class="tag">telegram channel</span><b>t.me/Erfjabs</b><small>New versions and news, posted first.</small><span class="go" aria-hidden="true">↗</span></a>
+        <a href="https://github.com/erfjab/wade"><span class="tag">★ star<span id="stars"></span></span><b>erfjab/wade</b><small>A star helps others find Wade.</small><span class="go" aria-hidden="true">↗</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <span><svg aria-hidden="true"><use href="#mark"/></svg>wade</span>
+  <span>made by <a href="https://github.com/erfjab">erfjab</a> · <a href="https://t.me/Erfjabs">telegram</a> · <a href="https://github.com/erfjab/wade">github</a></span>
+</footer>
+
+<script>
+// Shared drawing: the fake desktop's wallpaper and app windows, used by both the 3D hero and the demo.
+window.WADE = (() => {
+  const MONO = '"JetBrains Mono", Consolas, monospace', SANS = '"IBM Plex Sans", "Segoe UI", sans-serif';
+  const apps = [
+    { id: "code", name: "Code", title: "main.rs · wade · Code", color: "#3b82f6", glyph: "{}" },
+    { id: "web", name: "Browser", title: "erfjab/wade · Browser", color: "#f97316", glyph: "◎" },
+    { id: "term", name: "Terminal", title: "Terminal · PowerShell", color: "#334155", glyph: ">_" },
+    { id: "chat", name: "Chat", title: "Chat · Design team", color: "#0ea5e9", glyph: "@" },
+    { id: "music", name: "Music", title: "Night Drive · Music", color: "#db2777", glyph: "♪" },
+    { id: "files", name: "Files", title: "Downloads · Files", color: "#ca8a04", glyph: "▤" },
+  ];
+  const rr = (g, x, y, w, h, r) => { g.beginPath(); g.roundRect(x, y, w, h, r); };
+  const bar = (g, x, y, w, h, c) => { g.fillStyle = c; rr(g, x, y, w, h, h / 2); g.fill(); };
+  const text = (g, s, x, y, font, color, align = "left") => { g.font = font; g.fillStyle = color; g.textAlign = align; g.textBaseline = "middle"; g.fillText(s, x, y); };
+
+  function wallpaper(g, W, H) {
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, "#22385e"); sky.addColorStop(.55, "#15233c"); sky.addColorStop(1, "#0b121f");
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    const glow = g.createRadialGradient(W * .68, H * .42, 0, W * .68, H * .42, H * .7);
+    glow.addColorStop(0, "rgba(111,179,255,.38)"); glow.addColorStop(1, "rgba(111,179,255,0)");
+    g.fillStyle = glow; g.fillRect(0, 0, W, H);
+    [["#1a2b48", .62, .07, 1.3], ["#121f35", .72, .06, 2.1], ["#0c1424", .84, .05, 3.4]].forEach(([c, base, amp, f]) => {
+      g.fillStyle = c; g.beginPath(); g.moveTo(0, H);
+      for (let x = 0; x <= W; x += W / 80) g.lineTo(x, H * (base - amp * Math.sin(x / W * Math.PI * f + f) - amp * .5 * Math.sin(x / W * 9 + f)));
+      g.lineTo(W, H); g.fill();
+    });
+  }
+
+  function icon(g, app, x, y, s) {
+    g.fillStyle = app.color; rr(g, x, y, s, s, s * .24); g.fill();
+    text(g, app.glyph, x + s / 2, y + s / 2 + 1, `700 ${s * .48}px ${MONO}`, "#fff", "center");
+  }
+
+  // One maximized window, W×H, with a title bar and app content. k scales 1280-wide units.
+  function win(g, app, W, H, radius = 0) {
+    const k = W / 1280;
+    g.save();
+    if (radius) { rr(g, 0, 0, W, H, radius); g.clip(); }
+    g.scale(k, k);
+    const w = 1280, h = H / k, top = 46;
+    g.fillStyle = "#12161d"; g.fillRect(0, 0, w, h);
+    g.fillStyle = "#1b2029"; g.fillRect(0, 0, w, top);
+    icon(g, app, 16, 12, 22);
+    text(g, app.title, 50, top / 2, `400 15px ${SANS}`, "#c9d1dc");
+    ["—", "▢", "✕"].forEach((c, i) => text(g, c, w - 150 + i * 50, top / 2, `400 15px ${SANS}`, "#7d8796", "center"));
+    g.translate(0, top);
+    DRAW[app.id](g, w, h - top);
+    g.restore();
+  }
+
+  const DRAW = {
+    code(g, w, h) {
+      g.fillStyle = "#161b23"; g.fillRect(0, 0, 230, h);
+      ["WADE", "▾ src", "  hook.rs", "  main.rs", "  switcher.rs", "  tray.rs", "  winlist.rs", "  Cargo.toml", "  README.md"].forEach((f, i) => {
+        if (i === 3) { g.fillStyle = "#24324a"; g.fillRect(0, 30 + i * 32 - 15, 230, 30); }
+        text(g, f, 20, 30 + i * 32, `${i ? 400 : 600} 15px ${SANS}`, i ? "#aab3c0" : "#7d8796");
+      });
+      const C = { k: "#c792ea", f: "#82aaff", s: "#c3e88d", c: "#5d6675", p: "#d6deeb", t: "#ffcb6b" };
+      const L = [
+        [["#![windows_subsystem = \"windows\"]", "c"]],
+        [],
+        [["fn ", "k"], ["main", "f"], ["() {", "p"]],
+        [["    unsafe {", "p"]],
+        [["        // One instance only: a second launch exits.", "c"]],
+        [["        let ", "k"], ["name", "p"], [" = util::", "p"], ["wide", "f"], ["(", "p"], ["\"Local\\\\WadeSwitcher\"", "s"], [");", "p"]],
+        [["        let ", "k"], ["overlay", "p"], [" = switcher::", "p"], ["create_window", "f"], ["();", "p"]],
+        [["        tray::", "p"], ["create", "f"], ["();", "p"]],
+        [["        // The hook lives on its own thread.", "c"]],
+        [["        hook::", "p"], ["spawn", "f"], ["(overlay);", "p"]],
+        [],
+        [["        let mut ", "k"], ["msg", "p"], [": ", "p"], ["MSG", "t"], [" = std::mem::", "p"], ["zeroed", "f"], ["();", "p"]],
+        [["        while ", "k"], ["GetMessageW", "f"], ["(&mut msg, null_mut(), 0, 0) > 0 {", "p"]],
+        [["            ", "p"], ["DispatchMessageW", "f"], ["(&msg);", "p"]],
+        [["        }", "p"]],
+        [["    }", "p"]],
+        [["}", "p"]],
+      ];
+      L.forEach((line, i) => {
+        const y = 32 + i * 30;
+        if (y > h - 10) return;
+        text(g, String(i + 1).padStart(2), 258, y, `400 15px ${MONO}`, "#3f4856");
+        g.font = `400 16px ${MONO}`; let x = 300;
+        line.forEach(([s, c]) => { g.fillStyle = C[c]; g.textAlign = "left"; g.fillText(s, x, y); x += g.measureText(s).width; });
+      });
+    },
+    web(g, w, h) {
+      g.fillStyle = "#1b2029"; g.fillRect(0, 0, w, 52);
+      bar(g, 120, 10, 760, 32, "#262d38");
+      text(g, "github.com/erfjab/wade", 142, 26, `400 15px ${SANS}`, "#c9d1dc");
+      ["‹", "›", "↻"].forEach((c, i) => text(g, c, 24 + i * 30, 26, `400 20px ${SANS}`, "#7d8796", "center"));
+      g.fillStyle = "#0d1117"; g.fillRect(0, 52, w, h - 52);
+      text(g, "erfjab / wade", 80, 104, `600 26px ${SANS}`, "#e6edf3");
+      ["★ Star", "Watch", "Fork"].forEach((c, i) => { g.strokeStyle = "#30363d"; g.lineWidth = 2; rr(g, w - 360 + i * 100, 86, 88, 36, 8); g.stroke(); text(g, c, w - 316 + i * 100, 104, `500 14px ${SANS}`, "#c9d1d9", "center"); });
+      g.strokeStyle = "#30363d"; rr(g, 80, 150, w - 160, h - 190, 12); g.stroke();
+      g.save(); g.translate(w / 2 - 44, 186); g.scale(88 / 64, 88 / 64);
+      g.fillStyle = "#000"; rr(g, 0, 0, 64, 64, 14); g.fill(); g.fillStyle = "#fff";
+      [[1, 25, 5, 14, 1.5], [58, 25, 5, 14, 1.5], [9, 20, 10, 24, 2.5], [45, 20, 10, 24, 2.5], [22, 14, 20, 36, 4]].forEach(([x, y, ww, hh, r]) => { rr(g, 6.4 + x * .8, 6.4 + y * .8, ww * .8, hh * .8, r * .8); g.fill(); });
+      g.restore();
+      text(g, "Wade", w / 2, 316, `700 34px ${SANS}`, "#e6edf3", "center");
+      text(g, "A card-row window switcher that replaces Alt+Tab on Windows.", w / 2, 362, `400 18px ${SANS}`, "#8b949e", "center");
+      [[0.7, 410], [0.55, 446], [0.62, 482], [0.4, 518]].forEach(([f, y]) => bar(g, 140, y, (w - 280) * f, 14, "#21262d"));
+    },
+    term(g, w, h) {
+      g.fillStyle = "#0c0f14"; g.fillRect(0, 0, w, h);
+      const lines = [
+        ["PS C:\\Users\\you> ", "#7aa2f7", "irm https://raw.githubusercontent.com/erfjab/wade/master/install.ps1 | iex", "#e9edf3"],
+        ["Installing Wade...", "#9aa3b2"],
+        ["Wade installed to C:\\Users\\you\\AppData\\Local\\Programs\\Wade.", "#9aa3b2"],
+        ["Press Alt+Tab to use it.", "#c3e88d"],
+        [""],
+        ["PS C:\\Users\\you> ", "#7aa2f7", "cargo build --release", "#e9edf3"],
+        ["   Compiling windows-sys v0.59.0", "#9aa3b2"],
+        ["   Compiling wade v0.1.0 (C:\\code\\wade)", "#9aa3b2"],
+        ["    Finished `release` profile [optimized] target(s) in 13.93s", "#c3e88d"],
+        [""],
+        ["PS C:\\Users\\you> ", "#7aa2f7", "▌", "#e9edf3"],
+      ];
+      g.font = `400 17px ${MONO}`;
+      lines.forEach(([a, ca, b, cb], i) => {
+        const y = 34 + i * 32;
+        if (!a) return;
+        g.textAlign = "left"; g.textBaseline = "middle"; g.fillStyle = ca; g.fillText(a, 28, y);
+        if (b) { g.fillStyle = cb; g.fillText(b, 28 + g.measureText(a).width, y); }
+      });
+    },
+    chat(g, w, h) {
+      g.fillStyle = "#151a23"; g.fillRect(0, 0, 330, h);
+      const people = [["Design team", "Sara: the row looks great", "#0ea5e9"], ["Ali", "send me the build?", "#f97316"], ["Mina", "voice message", "#22c55e"], ["Release notes", "v0.1.0 is out", "#a855f7"], ["Reza", "ok, tomorrow 10:00", "#eab308"]];
+      people.forEach(([n, m, c], i) => {
+        const y = 20 + i * 84;
+        if (!i) { g.fillStyle = "#24324a"; g.fillRect(0, y - 8, 330, 80); }
+        g.fillStyle = c; g.beginPath(); g.arc(50, y + 32, 26, 0, 7); g.fill();
+        text(g, n[0], 50, y + 33, `600 20px ${SANS}`, "#fff", "center");
+        text(g, n, 92, y + 20, `600 16px ${SANS}`, "#e9edf3");
+        text(g, m, 92, y + 46, `400 14px ${SANS}`, "#8b95a5");
+      });
+      g.fillStyle = "#0f141b"; g.fillRect(330, 0, w - 330, h);
+      const msgs = [[0, "Did anyone try the new Alt+Tab thing?"], [1, "Wade? Yes. All windows in one row."], [0, "And the previews are live, my video kept playing."], [1, "Up arrow closes a window right there."], [0, "Installing it now."]];
+      msgs.forEach(([me, s], i) => {
+        g.font = `400 16px ${SANS}`;
+        const tw = g.measureText(s).width + 36, y = 36 + i * 72;
+        const x = me ? w - 40 - tw : 370;
+        g.fillStyle = me ? "#2b5797" : "#1d222c"; rr(g, x, y, tw, 48, 16); g.fill();
+        text(g, s, x + 18, y + 24, `400 16px ${SANS}`, "#e9edf3");
+      });
+      bar(g, 370, h - 70, w - 410, 48, "#1d222c");
+      text(g, "Write a message…", 396, h - 46, `400 15px ${SANS}`, "#5d6675");
+    },
+    music(g, w, h) {
+      g.fillStyle = "#14101a"; g.fillRect(0, 0, w, h);
+      const ax = 70, ay = 50, as = Math.min(420, h - 170);
+      const art = g.createLinearGradient(ax, ay, ax + as, ay + as);
+      art.addColorStop(0, "#db2777"); art.addColorStop(1, "#1e3a8a");
+      g.fillStyle = art; rr(g, ax, ay, as, as, 16); g.fill();
+      g.strokeStyle = "rgba(255,255,255,.28)"; g.lineWidth = 3;
+      for (let r = 30; r < as * .6; r += 34) { g.beginPath(); g.arc(ax + as * .62, ay + as * .58, r, 0, 7); g.stroke(); }
+      text(g, "Night Drive", ax, ay + as + 46, `700 30px ${SANS}`, "#fff");
+      text(g, "Low Tide · Coastlines", ax, ay + as + 84, `400 17px ${SANS}`, "#b9a9c4");
+      bar(g, ax, ay + as + 112, as, 6, "#3a2f45"); bar(g, ax, ay + as + 112, as * .42, 6, "#f472b6");
+      const lx = ax + as + 70;
+      text(g, "Up next", lx, 70, `600 15px ${SANS}`, "#b9a9c4");
+      ["Night Drive", "Neon Harbor", "Slow Lanes", "After Hours", "Blue Hour", "Last Ferry", "Static Sea"].forEach((t, i) => {
+        const y = 116 + i * 58;
+        if (!i) { g.fillStyle = "#2a1f33"; rr(g, lx - 16, y - 24, w - lx - 50, 50, 10); g.fill(); }
+        text(g, String(i + 1), lx, y, `400 15px ${MONO}`, i ? "#7d6f88" : "#f472b6");
+        text(g, t, lx + 44, y, `${i ? 400 : 600} 17px ${SANS}`, i ? "#d9cfe0" : "#fff");
+        text(g, ["3:41", "4:05", "2:58", "3:33", "4:20", "3:12", "5:01"][i], w - 80, y, `400 15px ${MONO}`, "#7d6f88", "right");
+      });
+    },
+    files(g, w, h) {
+      g.fillStyle = "#161b23"; g.fillRect(0, 0, 230, h);
+      ["Home", "Desktop", "Downloads", "Documents", "Pictures", "Music"].forEach((f, i) => {
+        if (i === 2) { g.fillStyle = "#24324a"; rr(g, 10, 24 + i * 40, 210, 34, 6); g.fill(); }
+        text(g, f, 28, 41 + i * 40, `400 15px ${SANS}`, i === 2 ? "#fff" : "#aab3c0");
+      });
+      g.fillStyle = "#12161d"; g.fillRect(230, 0, w - 230, h);
+      text(g, "Downloads", 262, 40, `600 22px ${SANS}`, "#e9edf3");
+      const items = [["wade-windows-x64.zip", 0], ["Screenshots", 1], ["invoice-2026-10.pdf", 0], ["Projects", 1], ["wallpaper.jpg", 0], ["notes.md", 0], ["Music", 1], ["report.xlsx", 0], ["setup.exe", 0], ["Backups", 1]];
+      items.forEach(([n, folder], i) => {
+        const x = 262 + (i % 5) * 196, y = 90 + Math.floor(i / 5) * 190;
+        if (folder) { g.fillStyle = "#eab308"; rr(g, x + 40, y + 10, 96, 76, 8); g.fill(); g.fillStyle = "#ca8a04"; rr(g, x + 40, y + 4, 44, 18, 5); g.fill(); }
+        else { g.fillStyle = "#2a3140"; rr(g, x + 52, y, 72, 92, 6); g.fill(); bar(g, x + 64, y + 30, 48, 6, "#3d4757"); bar(g, x + 64, y + 46, 36, 6, "#3d4757"); }
+        g.font = `400 14px ${SANS}`;
+        let s = n; while (g.measureText(s).width > 176 && s.length > 4) s = s.slice(0, -2);
+        text(g, s === n ? n : s + "…", x + 88, y + 118, `400 14px ${SANS}`, "#c9d1dc", "center");
+      });
+    },
+  };
+
+  function label(g, app, W, H, color) {
+    g.clearRect(0, 0, W, H);
+    icon(g, app, 0, H * .1, H * .8);
+    text(g, app.title, H * 1.05, H / 2 + 1, `500 ${H * .5}px ${SANS}`, color);
+  }
+
+  return { apps, wallpaper, win, label, icon };
+})();
+</script>
+
+<script type="module">
+// Hero: the switcher's row in 3D over a dimmed wallpaper, stepping one card every couple of seconds.
+import * as THREE from "three";
+const W = window.WADE;
+const canvas = document.getElementById("scene");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "low-power" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(0x0b0e13);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+camera.position.set(0, 0, 12);
+
+const tex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+const paint = (w, h, fn) => { const c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h); return c; };
+
+await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]);
+
+// The desktop background, dimmed like Wade's backdrop (DIM = 150/256).
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(36, 20.25), new THREE.MeshBasicMaterial({ map: tex(paint(1600, 900, W.wallpaper)), color: new THREE.Color(0.59, 0.59, 0.59) }));
+wall.position.z = -7;
+scene.add(wall);
+
+const CW = 4.4, CH = CW * 752 / 1280, SIDE = 0.68, ALPHA = 0.62, GAP = CW * 0.06;
+const row = new THREE.Group();
+scene.add(row);
+const ring = new THREE.Mesh(new THREE.PlaneGeometry(CW + 0.36, CH + 0.36), new THREE.MeshBasicMaterial({
+  map: tex(paint(1320, 800, (g, w, h) => { g.strokeStyle = "#6fb3ff"; g.lineWidth = 12; g.beginPath(); g.roundRect(8, 8, w - 16, h - 16, 40); g.stroke(); })),
+  transparent: true, depthWrite: false,
+}));
+ring.position.z = -0.01;
+row.add(ring);
+const cards = W.apps.map((app) => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(CW, CH), new THREE.MeshBasicMaterial({ map: tex(paint(1280, 752, (g, w, h) => W.win(g, app, w, h, 30))), transparent: true }));
+  const lw = 900, lh = 64;
+  const on = tex(paint(lw, lh, (g, w, h) => W.label(g, app, w, h, "#ffffff")));
+  const off = tex(paint(lw, lh, (g, w, h) => W.label(g, app, w, h, "#9aa3b2")));
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(CW * 1.1, CW * 1.1 * lh / lw), new THREE.MeshBasicMaterial({ map: off, transparent: true, depthWrite: false }));
+  label.geometry.translate(CW * 1.1 / 2, 0, 0);
+  row.add(m, label);
+  return { app, m, label, on, off };
+});
+
+const n = cards.length;
+const wrapD = (d) => { d = ((d % n) + n) % n; return d > n / 2 ? d - n : d; };
+function layout(pos) {
+  const step = CW / 2 + GAP + CW * SIDE / 2;
+  for (const [i, c] of cards.entries()) {
+    const d = wrapD(i - pos), ad = Math.abs(d), t = Math.min(ad, 1);
+    const s = 1 - (1 - SIDE) * t;
+    const x = ad <= 1 ? d * step : Math.sign(d) * (step + (ad - 1) * (CW * SIDE + GAP));
+    const fade = ad > 2.2 ? Math.max(0, 1 - (ad - 2.2) / 0.5) : 1;
+    c.m.position.set(x, 0, -ad * 0.32);
+    c.m.rotation.y = -Math.max(-1.6, Math.min(1.6, d)) * 0.1;
+    c.m.scale.setScalar(s);
+    c.m.material.opacity = (1 - (1 - ALPHA) * t) * fade;
+    c.m.visible = fade > 0;
+    // Title above each card, like Wade's label: icon and window title, white on the active card.
+    c.label.material.map = ad < 0.5 ? c.on : c.off;
+    c.label.scale.setScalar(Math.max(s, 0.8) * 0.55);
+    const lwid = c.label.geometry.parameters.width * c.label.scale.x;
+    c.label.position.set(x - Math.min(lwid * 0.55, CW * s / 2), CH * s / 2 + 0.32, c.m.position.z);
+    c.label.material.opacity = fade * (ad < 0.5 ? 1 : 0.7);
+    c.label.visible = fade > 0;
+  }
+  const near = Math.abs(pos - Math.round(pos));
+  ring.material.opacity = Math.max(0, 1 - near * 6);
+}
+
+let wide = true;
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  const visW = 2 * camera.position.z * Math.tan((camera.fov / 2) * Math.PI / 180) * camera.aspect;
+  row.scale.setScalar(Math.min(1.12, visW / (camera.aspect > 1.2 ? 12.5 : 7)));
+  wide = camera.aspect > 1.4;
+  if (reduced) { layout(0); renderer.render(scene, camera); }
+}
+new ResizeObserver(resize).observe(canvas);
+resize();
+
+const pointer = { x: 0, y: 0, sx: 0, sy: 0 };
+addEventListener("pointermove", (e) => { pointer.x = (e.clientX / innerWidth) * 2 - 1; pointer.y = (e.clientY / innerHeight) * 2 - 1; });
+
+const hudTab = document.getElementById("hud-tab"), hudName = document.getElementById("hud-name");
+let target = 0, pos = 0, next = 1.6, last = performance.now(), running = true;
+function tick() {
+  target++;
+  hudTab.classList.add("hit");
+  setTimeout(() => hudTab.classList.remove("hit"), 160);
+  hudName.textContent = "  " + W.apps[((target % n) + n) % n].title;
+}
+hudName.textContent = "  " + W.apps[0].title;
+
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  next -= dt;
+  if (next <= 0) { tick(); next = 2.1; }
+  pos += (target - pos) * (1 - Math.exp(-dt * 10));
+  layout(pos);
+  pointer.sx += (pointer.x - pointer.sx) * 0.05;
+  pointer.sy += (pointer.y - pointer.sy) * 0.05;
+  row.rotation.y = pointer.sx * 0.12;
+  row.rotation.x = pointer.sy * 0.06;
+  wall.position.x = -pointer.sx * 0.5;
+  renderer.render(scene, camera);
+  if (running) requestAnimationFrame(frame);
+}
+if (reduced) { layout(0); renderer.render(scene, camera); }
+else {
+  const resume = () => { const was = running; running = !document.hidden && visible; if (running && !was) { last = performance.now(); requestAnimationFrame(frame); } };
+  let visible = true;
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; resume(); }).observe(canvas);
+  document.addEventListener("visibilitychange", resume);
+  requestAnimationFrame(frame);
+}
+</script>
+
+<script>
+// Demo: a working replica of the switcher on a fake desktop. Same layout constants as src/switcher.rs.
+(() => {
+  const W = window.WADE;
+  const CARD_HEIGHT = 0.62, CARD_MAX_WIDTH = 0.75, ROW_CENTER_Y = 0.45, GAP = 0.025, SIDE_SCALE = 0.68, SIDE_ALPHA = 0.62, CLOSE_DRAG = 0.12;
+  const $ = (id) => document.getElementById(id);
+  const desk = $("desk"), ring = $("ring"), strip = $("strip"), taskbar = $("taskbar"), status = $("status"), empty = $("empty");
+  const say = (s) => { status.textContent = s; };
+  const icoHTML = (a) => `<span class="ico" style="background:${a.color}">${a.glyph}</span>`;
+
+  // One canvas per app window, drawn once.
+  const wins = new Map(), labels = new Map();
+  for (const app of W.apps) {
+    const c = document.createElement("canvas");
+    c.width = 1280; c.height = 752; c.className = "win"; c.dataset.id = app.id;
+    desk.appendChild(c);
+    wins.set(app.id, c);
+    const l = document.createElement("div");
+    l.className = "label"; l.innerHTML = icoHTML(app) + `<span>${app.title}</span>`;
+    desk.appendChild(l);
+    labels.set(app.id, l);
+  }
+  const drawAll = () => {
+    for (const app of W.apps) W.win(wins.get(app.id).getContext("2d"), app, 1280, 752);
+    for (const id of ["wall", "veil"]) { const c = $(id); c.width = 1280; c.height = 800; W.wallpaper(c.getContext("2d"), 1280, 800); }
+  };
+  drawAll();
+  document.fonts.ready.then(drawAll);
+
+  let order = W.apps.map((a) => a.id); // most recently used first
+  let open = false, sel = 0, dw = 0, dh = 0, settleTimer = 0, closeTimer = 0;
+
+  const byId = (id) => W.apps.find((a) => a.id === id);
+  const wrapD = (d, n) => { d = ((d % n) + n) % n; return d > n / 2 ? d - n : d; };
+
+  function measure() {
+    dw = desk.clientWidth; dh = desk.clientHeight;
+    desk.style.setProperty("--u", dw / 100 + "px");
+  }
+
+  function rects() {
+    const winH = dh * 0.94, aspect = dw / winH;
+    const cw = Math.min(dh * CARD_HEIGHT * aspect, dw * CARD_MAX_WIDTH);
+    const sw = cw * SIDE_SCALE, gap = dw * GAP, step = cw / 2 + gap + sw / 2;
+    const n = order.length;
+    return order.map((id, i) => {
+      const d = wrapD(i - sel, n), ad = Math.abs(d);
+      const w = ad ? sw : cw, s = w / dw, h = winH * s;
+      const cx = dw / 2 + (ad ? Math.sign(d) * (step + (ad - 1) * (sw + gap)) : 0);
+      const cy = dh * ROW_CENTER_Y;
+      return { id, d, x: cx - w / 2, y: cy - h / 2, w, h, s };
+    });
+  }
+
+  function render(mode) {
+    desk.classList.toggle("open", open);
+    desk.classList.toggle("moving", mode === "move");
+    taskbar.innerHTML = order.map((id) => `<button type="button" data-id="${id}" class="${id === order[0] && !open ? "front" : ""}" aria-label="${byId(id).name}">${icoHTML(byId(id))}</button>`).join("");
+    empty.hidden = order.length > 0;
+    for (const [id, el] of wins) {
+      if (!order.includes(id)) { el.style.opacity = 0; el.style.pointerEvents = "none"; }
+    }
+    if (!open) {
+      for (const [id, el] of wins) {
+        if (!order.includes(id)) continue;
+        el.classList.toggle("front", id === order[0]);
+        el.style.opacity = "";
+        el.style.transform = "none";
+        el.style.zIndex = id === order[0] ? 3 : 2;
+        labels.get(id).style.opacity = 0;
+      }
+      return;
+    }
+    const n = order.length, R = rects();
+    for (const r of R) {
+      const el = wins.get(r.id), lab = labels.get(r.id), ad = Math.abs(r.d);
+      // A card that wraps around the row jumps instead of flying across it.
+      const prev = Number(el.dataset.d);
+      const jump = !Number.isNaN(prev) && Math.abs(prev - r.d) > 1;
+      if (jump) { el.style.transition = "none"; lab.style.transition = "none"; }
+      el.dataset.d = r.d;
+      const hidden = n > 5 && ad >= 3;
+      el.classList.remove("front");
+      el.style.zIndex = 3;
+      el.style.opacity = hidden ? 0 : ad ? SIDE_ALPHA : 1;
+      el.style.transform = `translate(${r.x}px, ${r.y}px) scale(${r.s})`;
+      lab.classList.toggle("on", !ad);
+      lab.style.opacity = hidden ? 0 : 1;
+      const lw = Math.min(lab.scrollWidth, Math.max(r.w, dw * 0.24));
+      lab.style.maxWidth = lw + "px";
+      lab.style.transform = `translate(${r.x + r.w / 2 - lw / 2}px, ${r.y - dw * 0.016 - lab.offsetHeight}px)`;
+      if (jump) { el.offsetWidth; el.style.transition = ""; lab.style.transition = ""; }
+      if (!ad) {
+        const o = dw * 0.006;
+        Object.assign(ring.style, { width: r.w + 2 * o + "px", height: r.h + 2 * o + "px", transform: `translate(${r.x - o}px, ${r.y - o}px)` });
+      }
+    }
+    strip.innerHTML = order.map((id, i) => `<button type="button" data-i="${i}" class="${i === sel ? "on" : ""}" aria-label="${byId(id).name}">${icoHTML(byId(id))}</button>`).join("");
+    desk.classList.remove("settled");
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => desk.classList.add("settled"), mode === "move" ? 170 : 270);
+    desk.setAttribute("aria-label", `Wade switcher open on ${byId(order[sel]).title}, ${sel + 1} of ${n}.`);
+  }
+
+  function openRow(dir = 0) {
+    if (!order.length) return;
+    if (!open) {
+      open = true; sel = 0;
+      // Start every card on its window so the row grows out of the screen.
+      for (const id of order) { const el = wins.get(id); delete el.dataset.d; el.style.opacity = id === order[0] ? 1 : 0; }
+      render("open");
+      say(`Opened on ${byId(order[0]).name}. Tab moves one card.`);
+      return;
+    }
+    move(dir || 1);
+  }
+  function move(dir) {
+    if (!open) return openRow();
+    sel = (sel + dir + order.length) % order.length;
+    render("move");
+    say(byId(order[sel]).title);
+  }
+  function choose(i = sel) {
+    if (!open) return;
+    const id = order[i];
+    open = false;
+    order = [id, ...order.filter((x) => x !== id)];
+    // The chosen card grows onto its window; the others fade where they are.
+    for (const [wid, el] of wins) if (wid !== id && order.includes(wid)) { el.style.opacity = 0; el.classList.remove("front"); }
+    const el = wins.get(id);
+    el.style.zIndex = 4;
+    desk.classList.remove("open", "moving", "settled");
+    el.classList.add("front"); el.style.opacity = 1; el.style.transform = "none";
+    for (const l of labels.values()) l.style.opacity = 0;
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => render(), 240);
+    say(`Switched to ${byId(id).name}.`);
+  }
+  function cancel() {
+    if (!open) return;
+    sel = 0;
+    choose(0);
+    say("Cancelled. Back where you were.");
+  }
+  function closeWin() {
+    if (!open) return;
+    const id = order[sel], el = wins.get(id);
+    el.style.transform += ` translateY(-30%)`;
+    el.style.opacity = 0;
+    labels.get(id).style.opacity = 0;
+    order = order.filter((x) => x !== id);
+    say(`Closed ${byId(id).name}.`);
+    if (!order.length) { open = false; setTimeout(() => render(), 200); return; }
+    sel = sel % order.length;
+    setTimeout(() => render("move"), 120);
+  }
+
+  desk.addEventListener("keydown", (e) => {
+    const k = e.key;
+    if (k === "Tab") openRow(e.shiftKey ? -1 : 1);
+    else if (!open) return;
+    else if (k === "ArrowRight") move(1);
+    else if (k === "ArrowLeft") move(-1);
+    else if (k === "Enter" || k === " ") choose();
+    else if (k === "ArrowUp" || k === "Delete") closeWin();
+    else if (k === "Escape") cancel();
+    else return;
+    e.preventDefault();
+  });
+
+  let wheel = 0;
+  desk.addEventListener("wheel", (e) => {
+    if (!open) return;
+    e.preventDefault();
+    wheel += e.deltaY || e.deltaX;
+    if (Math.abs(wheel) >= 60) { move(wheel > 0 ? 1 : -1); wheel = 0; }
+  }, { passive: false });
+
+  // Pointer: click the middle card to switch, a side card to select it, drag the middle card up to close.
+  let drag = null;
+  desk.addEventListener("pointerdown", (e) => {
+    const s = e.target.closest(".strip button"), t = e.target.closest(".taskbar button"), w = e.target.closest(".win");
+    if (s) { sel = Number(s.dataset.i); render("move"); say(byId(order[sel]).title); return; }
+    if (t && !open) { const id = t.dataset.id; order = [id, ...order.filter((x) => x !== id)]; render(); say(`${byId(id).name} to the front.`); return; }
+    if (!open || !w) return;
+    const i = order.indexOf(w.dataset.id);
+    if (i !== sel) { sel = i; render("move"); say(byId(order[sel]).title); return; }
+    drag = { y: e.clientY, el: w, base: w.style.transform };
+    w.setPointerCapture(e.pointerId);
+    w.style.transition = "none";
+  });
+  desk.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dy = Math.min(0, e.clientY - drag.y);
+    drag.el.style.transform = `translateY(${dy}px) ` + drag.base;
+  });
+  desk.addEventListener("pointerup", (e) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y, el = drag.el;
+    el.style.transition = "";
+    el.style.transform = drag.base;
+    drag = null;
+    if (-dy > dh * CLOSE_DRAG) closeWin();
+    else if (Math.abs(dy) < 6) choose();
+  });
+  desk.addEventListener("pointercancel", () => { if (drag) { drag.el.style.transition = ""; drag.el.style.transform = drag.base; drag = null; } });
+
+  $("b-next").onclick = () => openRow(1);
+  $("b-prev").onclick = () => (open ? move(-1) : openRow(-1));
+  $("b-go").onclick = () => (open ? choose() : say("Open the switcher first."));
+  $("b-close").onclick = () => (open ? closeWin() : say("Open the switcher first."));
+  $("b-esc").onclick = cancel;
+  function reset() {
+    open = false; sel = 0; order = W.apps.map((a) => a.id);
+    clearTimeout(closeTimer); clearTimeout(settleTimer);
+    for (const el of wins.values()) { el.style.pointerEvents = ""; delete el.dataset.d; }
+    desk.classList.add("instant"); render(); desk.offsetWidth; desk.classList.remove("instant");
+  }
+  $("reopen").onclick = () => { reset(); say("All windows are back."); };
+
+  // Autoplay: until someone touches it, the demo presses its own buttons, so it reads as something to try.
+  const SCRIPT = ["b-next", "b-next", "b-next", "b-go", 0, "b-next", "b-next", "b-prev", "b-go", 0, "b-next", "b-next", "b-next", "b-next", "b-esc", 0];
+  let auto = !matchMedia("(prefers-reduced-motion: reduce)").matches, step = 0, autoTimer = 0, inView = false;
+  const tagline = $("tagline");
+  function play() {
+    clearTimeout(autoTimer);
+    desk.classList.toggle("auto", auto && inView);
+    if (!auto || !inView) return;
+    const id = SCRIPT[step++ % SCRIPT.length];
+    if (id) {
+      const b = $(id);
+      b.classList.add("pressed");
+      setTimeout(() => b.classList.remove("pressed"), 220);
+      b.onclick();
+      status.innerHTML = `<b>playing by itself</b> · press any button or Tab to take over`;
+    }
+    autoTimer = setTimeout(play, id ? (id === "b-go" || id === "b-esc" ? 1500 : 850) : 1100);
+  }
+  function takeOver() {
+    if (!auto) return;
+    auto = false;
+    clearTimeout(autoTimer);
+    desk.classList.remove("auto");
+    for (const b of document.querySelectorAll(".controls .pressed")) b.classList.remove("pressed");
+    tagline.textContent = "Live demo · your turn";
+  }
+  for (const t of [desk, document.querySelector(".controls")]) for (const ev of ["pointerdown", "keydown", "wheel"]) t.addEventListener(ev, takeOver, { capture: true, passive: true });
+  new IntersectionObserver(([e]) => { inView = e.isIntersecting; play(); }, { threshold: 0.5 }).observe(desk);
+  if (!auto) tagline.textContent = "Live demo · your turn";
+
+  $("reset").onclick = () => {
+    reset();
+    step = 0;
+    auto = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    tagline.textContent = auto ? "Live demo · playing" : "Live demo · your turn";
+    say("Reset. Every window is back.");
+    if (auto) autoTimer = setTimeout(play, 900);
+  };
+
+  new ResizeObserver(() => { measure(); desk.classList.add("instant"); render(); desk.offsetWidth; desk.classList.remove("instant"); }).observe(desk);
+  measure();
+  render();
+
+  // Install command copy, and the star count on GitHub.
+  $("copy").onclick = async () => {
+    const b = $("copy"), cmd = $("cmd").textContent;
+    try { await navigator.clipboard.writeText(cmd); b.textContent = "copied"; }
+    catch { getSelection().selectAllChildren($("cmd")); b.textContent = "selected"; }
+    setTimeout(() => (b.textContent = "copy"), 1600);
+  };
+  fetch("https://api.github.com/repos/erfjab/wade").then((r) => r.json()).then((j) => { if (j.stargazers_count) $("stars").textContent = ` · ${j.stargazers_count}`; }).catch(() => {});
+})();
+</script>
+</body>
+</html>
