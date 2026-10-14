@@ -117,13 +117,14 @@ h2 { font: 700 clamp(26px, 3.6vw, 40px)/1.15 var(--display); letter-spacing: -.0
 /* Card size "Icons only": square tiles with the app icon instead of live previews. */
 .tile {
   position: absolute; left: 0; top: 0; z-index: 3; width: 100px; height: 100px; transform-origin: 0 0;
-  border-radius: 12px; background: #1d222c; display: grid; place-items: center; opacity: 0; pointer-events: none;
+  border-radius: calc(var(--r, 0) * .78px); background: #1d222c; display: grid; place-items: center; opacity: 0; pointer-events: none;
   transition: transform calc(.26s * var(--k)) cubic-bezier(.2, .8, .2, 1), opacity calc(.26s * var(--k)) ease-out;
 }
 .tile .ico { width: 50px; height: 50px; font-size: 24px; }
 .desk.icons.open .tile { pointer-events: auto; cursor: pointer; }
 .desk.moving .tile { transition-duration: calc(.16s * var(--k)); }
-.desk.open .win { pointer-events: auto; cursor: pointer; border-radius: calc(var(--u) * 1.2); }
+/* Corners: Wade's radius on the middle card (6-28 px on a 1920 px screen, the card ~62% of it), in the unscaled window's units. */
+.desk.open .win { pointer-events: auto; cursor: pointer; border-radius: calc(var(--u) * var(--r, 0) * .084); }
 .desk.moving .win { transition-duration: calc(.16s * var(--k)); }
 .desk.instant .win, .desk.instant .label, .desk.instant .tile { transition: none !important; }
 .label {
@@ -288,6 +289,7 @@ footer svg { width: 18px; height: 18px; }
         <div><span>Animation</span><button type="button" data-o="speed" data-v="0">Fast</button><button type="button" data-o="speed" data-v="1">Normal</button><button type="button" data-o="speed" data-v="2">Slow</button><button type="button" data-o="speed" data-v="3">Off</button></div>
         <div><span>Card size</span><button type="button" data-o="size" data-v="0">Large</button><button type="button" data-o="size" data-v="1">Medium</button><button type="button" data-o="size" data-v="2">Small</button><button type="button" data-o="size" data-v="3">Icons only</button></div>
         <div><span>Background</span><button type="button" data-o="bg" data-v="0">Black</button><button type="button" data-o="bg" data-v="1">75%</button><button type="button" data-o="bg" data-v="2">50%</button><button type="button" data-o="bg" data-v="3">25%</button></div>
+        <div><span>Corners</span><button type="button" data-o="corners" data-v="0">Sharp</button><button type="button" data-o="corners" data-v="1">Slight</button><button type="button" data-o="corners" data-v="2">Round</button><button type="button" data-o="corners" data-v="3">Rounder</button><button type="button" data-o="corners" data-v="4">Very</button></div>
       </div>
       <button class="reset" id="reset" type="button">reset demo</button>
     </div>
@@ -333,12 +335,13 @@ footer svg { width: 18px; height: 18px; }
       <div class="head">
         <p class="eyebrow">Settings</p>
         <h2>Make it yours, from the tray icon.</h2>
-        <p>Right-click the Wade icon in the tray. The first three can be tried in the demo above.</p>
+        <p>Right-click the Wade icon in the tray. The first four can be tried in the demo above.</p>
       </div>
       <div class="keys">
         <div><b>Animation speed</b><span><strong>Fast</strong>, Normal, Slow, Off</span></div>
         <div><b>Card size</b><span><strong>Large</strong>, Medium, Small, Icons only</span></div>
         <div><b>Background</b><span>Black, 75%, <strong>50%</strong>, 25% darker</span></div>
+        <div><b>Corners</b><span><strong>Sharp</strong>, Slightly round, Round, Rounder, Very round</span></div>
         <div><b>Start with Windows</b><span><strong>on</strong>, off</span></div>
         <div><b>Run as administrator</b><span><strong>on</strong>, off</span></div>
         <div><b>Exit</b><span>closes Wade</span></div>
@@ -735,8 +738,8 @@ else {
     tiles.set(app.id, t);
   }
   // The tray menu's settings, applied to the demo. Defaults match Wade's.
-  const OPT = { speed: 0, size: 0, bg: 2 };
-  const SPEED_K = [0.6, 1, 1.6, 0], SIZE_K = [1, 0.78, 0.58], BG_KEEP = [0, 0.25, 0.5, 0.75];
+  const OPT = { speed: 0, size: 0, bg: 2, corners: 0 };
+  const SPEED_K = [0.6, 1, 1.6, 0], SIZE_K = [1, 0.78, 0.58], BG_KEEP = [0, 0.25, 0.5, 0.75], CORNER = [0, 6, 12, 20, 28];
   const icons = () => OPT.size === 3;
   const ms = (t) => t * SPEED_K[OPT.speed];
 
@@ -947,6 +950,7 @@ else {
     desk.style.setProperty("--k", SPEED_K[OPT.speed]);
     desk.classList.toggle("icons", icons());
     $("veil").style.filter = `brightness(${BG_KEEP[OPT.bg]})`;
+    desk.style.setProperty("--r", CORNER[OPT.corners]);
     for (const b of document.querySelectorAll("#opts button")) b.classList.toggle("on", OPT[b.dataset.o] === Number(b.dataset.v));
   }
   $("opts").addEventListener("click", (e) => {

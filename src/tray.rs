@@ -1,4 +1,4 @@
-//! Tray icon and its menu: animation speed, card size, start with Windows,
+//! Tray icon and its menu: animation speed, card size, background, corners, start with Windows,
 //! run as administrator, exit. Settings live in HKCU\Software\Wade.
 //! Re-adds the icon if Explorer restarts.
 
@@ -34,6 +34,7 @@ const CMD_ADMIN: usize = 3;
 const CMD_SPEED: usize = 10; // + index into SPEEDS
 const CMD_SIZE: usize = 20; // + index into SIZES
 const CMD_BG: usize = 30; // + index into BACKGROUNDS
+const CMD_CORNERS: usize = 40; // + index into CORNERS
 const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const WADE_KEY: &str = "Software\\Wade";
 const TASK: &str = "Wade";
@@ -45,6 +46,14 @@ pub static SPEED: AtomicU32 = AtomicU32::new(0);
 pub static SIZE: AtomicU32 = AtomicU32::new(0);
 pub const BACKGROUNDS: [&str; 4] = ["Black", "75% darker", "50% darker", "25% darker"];
 pub static BG: AtomicU32 = AtomicU32::new(2);
+
+pub const CORNERS: [&str; 5] = ["Sharp", "Slightly round", "Round", "Rounder", "Very round"];
+pub static CORNER: AtomicU32 = AtomicU32::new(0);
+
+/// Corner radius of the middle card at 100% display scale, in pixels.
+pub fn corner_radius() -> f32 {
+    [0.0, 6.0, 12.0, 20.0, 28.0][CORNER.load(Ordering::Relaxed).min(4) as usize]
+}
 
 /// How much of the desktop background's brightness the switcher keeps, of 256.
 pub fn backdrop_keep() -> u32 {
@@ -60,6 +69,7 @@ pub unsafe fn load_settings() {
     SPEED.store(get_dword("Speed").unwrap_or(0).min(3), Ordering::Relaxed);   // Fast by default
     SIZE.store(get_dword("Size").unwrap_or(0).min(3), Ordering::Relaxed);
     BG.store(get_dword("Background").unwrap_or(2).min(3), Ordering::Relaxed);
+    CORNER.store(get_dword("Corners").unwrap_or(0).min(4), Ordering::Relaxed);
 }
 
 pub unsafe fn create() -> HWND {
@@ -145,6 +155,8 @@ unsafe fn show_menu(hwnd: HWND) {
     AppendMenuW(menu, MF_POPUP, size as usize, wide("Card size").as_ptr());
     let bg = submenu(&BACKGROUNDS, CMD_BG, BG.load(Ordering::Relaxed));
     AppendMenuW(menu, MF_POPUP, bg as usize, wide("Background").as_ptr());
+    let corners = submenu(&CORNERS, CMD_CORNERS, CORNER.load(Ordering::Relaxed));
+    AppendMenuW(menu, MF_POPUP, corners as usize, wide("Corners").as_ptr());
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
     // With the administrator task, Wade always starts with Windows.
     let start = if admin { MF_CHECKED | MF_GRAYED } else { check(has_value(RUN_KEY, "Wade")) };
@@ -172,6 +184,10 @@ unsafe fn show_menu(hwnd: HWND) {
         c if (CMD_BG..CMD_BG + BACKGROUNDS.len()).contains(&c) => {
             BG.store((c - CMD_BG) as u32, Ordering::Relaxed);
             set_dword("Background", (c - CMD_BG) as u32);
+        }
+        c if (CMD_CORNERS..CMD_CORNERS + CORNERS.len()).contains(&c) => {
+            CORNER.store((c - CMD_CORNERS) as u32, Ordering::Relaxed);
+            set_dword("Corners", (c - CMD_CORNERS) as u32);
         }
         c if (CMD_SIZE..CMD_SIZE + SIZES.len()).contains(&c) => {
             SIZE.store((c - CMD_SIZE) as u32, Ordering::Relaxed);

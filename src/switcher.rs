@@ -19,7 +19,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 use crate::hook::SESSION;
-use crate::tray::{anim_factor, backdrop_keep, SIZE, SIZE_ICONS};
+use crate::tray::{anim_factor, backdrop_keep, corner_radius, SIZE, SIZE_ICONS};
 use crate::util::*;
 use crate::winlist::{self, WinInfo};
 
@@ -172,6 +172,7 @@ struct Gfx {
 /// Rendering it takes tens of milliseconds, so it is kept between openings
 /// and rebuilt only when the monitor or the background changes.
 struct Backdrop {
+    bits: *const u32, // mon-sized, top-down: read back for the rounded corners
     keep: u32, // of 256: how much of the background's brightness is left (tray "Background")
     dc: HDC,
     bmp: HBITMAP,
@@ -209,6 +210,46 @@ impl Drop for Backdrop {
     }
 }
 
+/// Scratch pixels (premultiplied, top-down) for the corner windows, one
+/// monitor wide and one corner radius high; exists only while visible.
+struct CornerBuf {
+    dc: HDC,
+    bmp: HBITMAP,
+    old: HGDIOBJ,
+    bits: *mut u32,
+    w: i32,
+    h: i32,
+}
+
+impl CornerBuf {
+    unsafe fn new(w: i32, h: i32) -> CornerBuf {
+        let mut bi: BITMAPINFO = zeroed();
+        bi.bmiHeader = BITMAPINFOHEADER {
+            biSize: size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: w,
+            biHeight: -h,
+            biPlanes: 1,
+            biBitCount: 32,
+            ..zeroed()
+        };
+        let mut bits: *mut core::ffi::c_void = null_mut();
+        let bmp = CreateDIBSection(null_mut(), &bi, DIB_RGB_COLORS, &mut bits, null_mut(), 0);
+        let dc = CreateCompatibleDC(null_mut());
+        let old = SelectObject(dc, bmp);
+        CornerBuf { dc, bmp, old, bits: bits.cast(), w, h }
+    }
+}
+
+impl Drop for CornerBuf {
+    fn drop(&mut self) {
+        unsafe {
+            SelectObject(self.dc, self.old);
+            DeleteObject(self.bmp);
+            DeleteDC(self.dc);
+        }
+    }
+}
+
 struct Switcher {
     hwnd: HWND,
     cards: Vec<Card>,
@@ -230,6 +271,8 @@ struct Switcher {
     drag: Option<(i32, i32)>,
     wheel: i32,
     backdrop: Option<Backdrop>,
+    corners: Option<CornerBuf>,
+    masks: Vec<HWND>, // click-through windows over the previews' corners
 }
 
 thread_local! {
@@ -278,6 +321,8 @@ pub unsafe fn create_window() -> HWND {
                 drag: None,
                 wheel: 0,
                 backdrop: None,
+                corners: None,
+                masks: Vec::new(),
             });
             if let Some(sw) = s.borrow_mut().as_mut() {
                 sw.warm();
@@ -427,6 +472,8 @@ impl Switcher {
         if !self.backdrop.as_ref().is_some_and(|b| same_mon(b) && b.key == key && b.keep == backdrop_keep()) {
             self.backdrop = Some(self.backdrop(m));
         }
+        let rad = (corner_radius() * self.scale).ceil() as i32;
+        self.corners = (rad > 0).then(|| CornerBuf::new(self.mw as i32, rad)).filter(|b| !b.bits.is_null());
 
         // The focused window shrinks from where it really is into the row while
         // the rest rise in and the overlay fades up around them.
@@ -477,6 +524,8 @@ impl Switcher {
         }
         self.cards.clear();
         self.ghosts.clear();
+        self.round_corners(); // no cards left: hides the corner windows
+        self.corners = None;
         if let Some(g) = self.gfx.take() {
             SelectObject(g.dc, g.old);
             DeleteObject(g.bmp);
@@ -688,9 +737,92 @@ impl Switcher {
         self.invalidate(full);
     }
 
-    unsafe fn apply_all(&self) {
+    unsafe fn apply_all(&mut self) {
         for c in self.cards.iter().chain(self.ghosts.iter()) {
             c.apply(self.mw);
+        }
+        self.round_corners();
+    }
+
+    /// The card's corner radius on screen: the tray's "Corners" setting, scaled
+    /// with the display and with the card, but no larger than on the middle card.
+    fn radius(&self, c: &Card) -> i32 {
+        let r = c.rect();
+        let max = (r.right - r.left).min(r.bottom - r.top) / 2;
+        ((corner_radius() * self.scale * c.cur.s.min(1.0)).round() as i32).min(max).max(0)
+    }
+
+    /// DWM draws live previews as plain rectangles and cannot clip them, so
+    /// small click-through windows above the overlay paint the backdrop back
+    /// over each preview's corners: a strip along its top and one along its
+    /// bottom, opaque outside the rounded corners and clear everywhere else.
+    unsafe fn round_corners(&mut self) {
+        let mut strips = Vec::new();
+        for c in self.cards.iter().chain(self.ghosts.iter()) {
+            let (r, rad) = (c.rect(), self.radius(c));
+            if c.thumb != 0 && c.cur.a > 0.01 && rad > 0 && r.right > 0 && (r.left as f32) < self.mw {
+                strips.push((r, rad, true));
+                strips.push((r, rad, false));
+            }
+        }
+        let mut used = 0;
+        if let (Some(buf), Some(b)) = (&self.corners, self.backdrop.as_ref().filter(|b| !b.bits.is_null())) {
+            let (bw, bh) = (b.mon.right - b.mon.left, b.mon.bottom - b.mon.top);
+            let back = std::slice::from_raw_parts(b.bits, (bw * bh) as usize);
+            let px = std::slice::from_raw_parts_mut(buf.bits, (buf.w * buf.h) as usize);
+            let blend = BLENDFUNCTION {
+                BlendOp: AC_SRC_OVER as u8,
+                BlendFlags: 0,
+                SourceConstantAlpha: (self.alpha.clamp(0.0, 1.0) * 255.0) as u8, // fades with the overlay
+                AlphaFormat: AC_SRC_ALPHA as u8,
+            };
+            for &(r, rad, top) in &strips {
+                let rad = rad.min(buf.h);
+                let (x0, x1) = (r.left.max(0), r.right.min(buf.w).min(bw)); // the part on this monitor
+                if x1 <= x0 {
+                    continue;
+                }
+                let y0 = if top { r.top } else { r.bottom - rad };
+                let w = r.right - r.left;
+                for y in 0..rad {
+                    let (sy, dy) = (y0 + y, if top { rad - y } else { y + 1 } as f32 - 0.5);
+                    for sx in x0..x1 {
+                        let x = sx - r.left;
+                        let dx = if x < rad { rad - x } else if x >= w - rad { x - (w - rad) + 1 } else { 0 } as f32 - 0.5;
+                        // Share of the pixel outside the rounded corner, for a smooth edge.
+                        let out = if dx < 0.0 || sy < 0 || sy >= bh { 0.0 } else { ((dx * dx + dy * dy).sqrt() - rad as f32 + 0.5).clamp(0.0, 1.0) };
+                        let k = (out * 255.0).round() as u32;
+                        let p = if k == 0 { 0 } else { back[(sy * bw + sx) as usize] };
+                        let ch = |shift: u32| ((p >> shift & 0xFF) * k / 255) << shift;
+                        px[(y * buf.w + sx - x0) as usize] = k << 24 | ch(0) | ch(8) | ch(16);
+                    }
+                }
+                if used == self.masks.len() {
+                    let win = CreateWindowExW(
+                        WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+                        wide("Static").as_ptr(), null(), WS_POPUP,
+                        0, 0, 0, 0, self.hwnd, null_mut(), GetModuleHandleW(null()), null(),
+                    );
+                    if win.is_null() {
+                        break;
+                    }
+                    self.masks.push(win);
+                }
+                let win = self.masks[used];
+                used += 1;
+                let dst = POINT { x: self.mon.left + x0, y: self.mon.top + y0 };
+                let size = SIZE { cx: x1 - x0, cy: rad };
+                let src = POINT { x: 0, y: 0 };
+                UpdateLayeredWindow(win, null_mut(), &dst, &size, buf.dc, &src, 0, &blend, ULW_ALPHA);
+                if IsWindowVisible(win) == 0 {
+                    ShowWindow(win, SW_SHOWNOACTIVATE);
+                }
+            }
+        }
+        for &win in &self.masks[used..] {
+            if IsWindowVisible(win) != 0 {
+                ShowWindow(win, SW_HIDE);
+            }
         }
     }
 
@@ -764,7 +896,7 @@ impl Switcher {
                 }
                 if c.thumb == 0 {
                     // Minimized windows have no live preview: show a panel with the app icon.
-                    fill_round(dc, &r, PANEL, (10.0 * s) as i32);
+                    fill_round(dc, &r, PANEL, 2 * self.radius(c));
                     let size = (64.0 * s * c.cur.s) as i32;
                     let cx = (r.left + r.right) / 2 - size / 2;
                     let cy = (r.top + r.bottom) / 2 - size / 2;
@@ -846,7 +978,7 @@ impl Switcher {
                 *px = ch(0) | ch(8) | ch(16);
             }
         }
-        Backdrop { keep, dc, bmp, old, mon, key: wall_key() }
+        Backdrop { bits: bits as *const u32, keep, dc, bmp, old, mon, key: wall_key() }
     }
 
     /// App icon and window title, centered above the card.
@@ -890,7 +1022,7 @@ impl Switcher {
         let Some((_, y0)) = self.drag else { return };
         let Some(c) = self.cards.get_mut(self.active) else { return };
         c.cur.y = c.to.y + (y - y0).min(0) as f32;
-        c.apply(self.mw);
+        self.apply_all();
         self.invalidate(true); // its title rides above the card, out of the row band
     }
 
@@ -958,11 +1090,11 @@ unsafe fn tint(dc: HDC, r: &RECT, color: COLORREF, alpha: u8, radius: i32) {
     DeleteDC(src);
 }
 
-unsafe fn fill_round(dc: HDC, r: &RECT, color: COLORREF, radius: i32) {
+unsafe fn fill_round(dc: HDC, r: &RECT, color: COLORREF, diameter: i32) {
     let brush = CreateSolidBrush(color);
     let old_brush = SelectObject(dc, brush);
     let old_pen = SelectObject(dc, GetStockObject(NULL_PEN));
-    RoundRect(dc, r.left, r.top, r.right + 1, r.bottom + 1, radius, radius);
+    RoundRect(dc, r.left, r.top, r.right + 1, r.bottom + 1, diameter, diameter);
     SelectObject(dc, old_pen);
     SelectObject(dc, old_brush);
     DeleteObject(brush);
