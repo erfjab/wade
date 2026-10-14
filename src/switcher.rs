@@ -774,7 +774,10 @@ impl Switcher {
                 if self.closing {
                     continue; // only the previews themselves take part in the exit
                 }
-                self.label(dc, c, &r, i == self.active);
+                // Icon tiles are narrower than their titles: only the middle one is titled.
+                if i == self.active || SIZE.load(Ordering::Relaxed) != SIZE_ICONS {
+                    self.label(dc, c, &r, i == self.active);
+                }
             }
 
             if let Some(panel) = self.strip_panel().filter(|_| !self.closing) {
