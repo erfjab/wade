@@ -160,12 +160,26 @@ h2 { font: 700 clamp(26px, 3.6vw, 40px)/1.15 var(--display); letter-spacing: -.0
 .status { text-align: center; color: var(--faint); font: 12.5px var(--mono); margin: 12px 0 0; min-height: 1.6em; }
 .status b { color: var(--accent); font-weight: 500; }
 /* The same settings as the tray menu, applied to the demo. */
-.opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px; margin: 16px auto 0; max-width: 980px; }
-.opts div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
-.opts span { font: 500 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-right: 6px; }
-.opts button { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--dim); font: 500 12.5px var(--body); cursor: pointer; }
-.opts button:hover { color: var(--fg); border-color: var(--faint); }
-.opts button.on { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.opts { max-width: 980px; margin: 22px auto 0; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.opts-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 13px 18px; border-bottom: 1px solid var(--line); }
+.opts-head b { font: 600 14px var(--display); }
+.opts-head small { color: var(--faint); font: 12px var(--mono); }
+.opts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 1px; background: var(--line); }
+.opt { display: grid; gap: 10px; padding: 15px 18px 18px; background: var(--panel); min-width: 0; }
+.opt-name { font: 500 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+/* A segmented control: one track, the chosen option raised out of it. */
+.seg { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.seg button {
+  flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 7px 6px; border: 0; border-radius: 7px; background: transparent; color: var(--dim);
+  font: 500 13px var(--body); white-space: nowrap; cursor: pointer; transition: background .15s, color .15s, box-shadow .15s;
+}
+.seg button:hover { color: var(--fg); background: rgba(255, 255, 255, .04); }
+.seg button.on { color: var(--fg); background: var(--panel-2); box-shadow: inset 0 0 0 1px #364050, 0 1px 3px rgba(0, 0, 0, .45); }
+.seg button:focus-visible { outline-offset: -2px; }
+/* Little previews: a card corner at each radius, the desktop at each darkness. */
+.cg { flex: none; width: 12px; height: 12px; border: 1.5px solid currentColor; border-right: 0; border-bottom: 0; border-top-left-radius: calc(var(--g) * 1px); }
+.sw { flex: none; width: 12px; height: 12px; border-radius: 3px; background: linear-gradient(135deg, #5b8fd8, #d8925b); filter: brightness(var(--b)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); }
 .keys strong { color: var(--fg); font-weight: 500; }
 .reset { display: block; margin: 6px auto 0; padding: 4px 8px; border: 0; background: none; color: var(--faint); font: 12px var(--mono); cursor: pointer; opacity: .7; }
 .reset:hover { opacity: 1; color: var(--dim); text-decoration: underline; text-underline-offset: 3px; }
@@ -219,8 +233,8 @@ footer svg { width: 18px; height: 18px; }
 @media (max-width: 560px) {
   .controls button { padding: 9px 11px; }
   .hud { display: none; }
-  .opts div { justify-content: center; }
-  .opts span { width: 100%; text-align: center; margin: 0 0 2px; }
+  .seg button { padding-inline: 3px; font-size: 12.5px; }
+  .seg .cg + span { display: none; } /* too narrow for five words: the corner previews alone */
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -285,11 +299,14 @@ footer svg { width: 18px; height: 18px; }
         <button type="button" id="b-esc"><kbd>Esc</kbd> cancel</button>
       </div>
       <p class="status" id="status" aria-live="polite">Press Tab, or the first button.</p>
-      <div class="opts" id="opts" aria-label="Demo settings, the same as Wade's tray menu">
-        <div><span>Animation</span><button type="button" data-o="speed" data-v="0">Fast</button><button type="button" data-o="speed" data-v="1">Normal</button><button type="button" data-o="speed" data-v="2">Slow</button><button type="button" data-o="speed" data-v="3">Off</button></div>
-        <div><span>Card size</span><button type="button" data-o="size" data-v="0">Large</button><button type="button" data-o="size" data-v="1">Medium</button><button type="button" data-o="size" data-v="2">Small</button><button type="button" data-o="size" data-v="3">Icons only</button></div>
-        <div><span>Background</span><button type="button" data-o="bg" data-v="0">Black</button><button type="button" data-o="bg" data-v="1">75%</button><button type="button" data-o="bg" data-v="2">50%</button><button type="button" data-o="bg" data-v="3">25%</button></div>
-        <div><span>Corners</span><button type="button" data-o="corners" data-v="0">Sharp</button><button type="button" data-o="corners" data-v="1">Slight</button><button type="button" data-o="corners" data-v="2">Round</button><button type="button" data-o="corners" data-v="3">Rounder</button><button type="button" data-o="corners" data-v="4">Very</button></div>
+      <div class="opts" id="opts" role="group" aria-label="Demo settings, the same as Wade's tray menu">
+        <div class="opts-head"><b>Settings</b><small>the same as right-clicking Wade's tray icon</small></div>
+        <div class="opts-grid">
+          <div class="opt"><span class="opt-name">Animation speed</span><div class="seg"><button type="button" data-o="speed" data-v="0">Fast</button><button type="button" data-o="speed" data-v="1">Normal</button><button type="button" data-o="speed" data-v="2">Slow</button><button type="button" data-o="speed" data-v="3">Off</button></div></div>
+          <div class="opt"><span class="opt-name">Card size</span><div class="seg"><button type="button" data-o="size" data-v="0">Large</button><button type="button" data-o="size" data-v="1">Medium</button><button type="button" data-o="size" data-v="2">Small</button><button type="button" data-o="size" data-v="3">Icons only</button></div></div>
+          <div class="opt"><span class="opt-name">Background</span><div class="seg"><button type="button" data-o="bg" data-v="0"><i class="sw" style="--b:0"></i><span>Black</span></button><button type="button" data-o="bg" data-v="1"><i class="sw" style="--b:.25"></i><span>75%</span></button><button type="button" data-o="bg" data-v="2"><i class="sw" style="--b:.5"></i><span>50%</span></button><button type="button" data-o="bg" data-v="3"><i class="sw" style="--b:.75"></i><span>25%</span></button></div></div>
+          <div class="opt"><span class="opt-name">Corners</span><div class="seg"><button type="button" data-o="corners" data-v="0" aria-label="Sharp"><i class="cg" style="--g:0"></i><span>Sharp</span></button><button type="button" data-o="corners" data-v="1" aria-label="Slightly round"><i class="cg" style="--g:2.5"></i><span>Slight</span></button><button type="button" data-o="corners" data-v="2" aria-label="Round"><i class="cg" style="--g:5"></i><span>Round</span></button><button type="button" data-o="corners" data-v="3" aria-label="Rounder"><i class="cg" style="--g:8"></i><span>Rounder</span></button><button type="button" data-o="corners" data-v="4" aria-label="Very round"><i class="cg" style="--g:11"></i><span>Very</span></button></div></div>
+        </div>
       </div>
       <button class="reset" id="reset" type="button">reset demo</button>
     </div>
@@ -951,14 +968,18 @@ else {
     desk.classList.toggle("icons", icons());
     $("veil").style.filter = `brightness(${BG_KEEP[OPT.bg]})`;
     desk.style.setProperty("--r", CORNER[OPT.corners]);
-    for (const b of document.querySelectorAll("#opts button")) b.classList.toggle("on", OPT[b.dataset.o] === Number(b.dataset.v));
+    for (const b of document.querySelectorAll("#opts button")) {
+      const on = OPT[b.dataset.o] === Number(b.dataset.v);
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", on);
+    }
   }
   $("opts").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     OPT[b.dataset.o] = Number(b.dataset.v);
     applyOpts();
     if (open) { desk.classList.add("instant"); render(); desk.offsetWidth; desk.classList.remove("instant"); }
-    say(`${b.parentElement.firstElementChild.textContent}: ${b.textContent}`);
+    say(`${b.closest(".opt").querySelector(".opt-name").textContent}: ${b.getAttribute("aria-label") || b.textContent}`);
   });
   applyOpts();
 
