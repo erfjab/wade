@@ -104,26 +104,36 @@ h2 { font: 700 clamp(26px, 3.6vw, 40px)/1.15 var(--display); letter-spacing: -.0
 .taskbar button.front::after { content: ""; position: absolute; bottom: 6%; width: 36%; height: 2px; border-radius: 2px; background: var(--accent); }
 .ico { display: grid; place-items: center; border-radius: 22%; color: #fff; font: 700 1em/1 var(--mono); }
 .taskbar .ico { width: calc(var(--u) * 1.9); height: calc(var(--u) * 1.9); font-size: calc(var(--u) * .9); }
-.veil { position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; transition: opacity .26s ease-out; }
-.veil canvas { width: 100%; height: 100%; display: block; filter: brightness(.59); }
+.desk { --k: .6; } /* animation speed: the tray's Fast/Normal/Slow/Off as a factor */
+.veil { position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; transition: opacity calc(.26s * var(--k)) ease-out; }
+.veil canvas { width: 100%; height: 100%; display: block; filter: brightness(.5); }
 .desk.open .veil { opacity: 1; pointer-events: auto; }
 .win {
   position: absolute; left: 0; top: 0; width: 100%; height: 94%; z-index: 3;
   transform-origin: 0 0; border-radius: 6px; opacity: 0; pointer-events: none;
-  transition: transform .26s cubic-bezier(.2, .8, .2, 1), opacity .26s ease-out;
+  transition: transform calc(.26s * var(--k)) cubic-bezier(.2, .8, .2, 1), opacity calc(.26s * var(--k)) ease-out;
 }
 .win.front { opacity: 1; }
+/* Card size "Icons only": square tiles with the app icon instead of live previews. */
+.tile {
+  position: absolute; left: 0; top: 0; z-index: 3; width: 100px; height: 100px; transform-origin: 0 0;
+  border-radius: 12px; background: #1d222c; display: grid; place-items: center; opacity: 0; pointer-events: none;
+  transition: transform calc(.26s * var(--k)) cubic-bezier(.2, .8, .2, 1), opacity calc(.26s * var(--k)) ease-out;
+}
+.tile .ico { width: 50px; height: 50px; font-size: 24px; }
+.desk.icons.open .tile { pointer-events: auto; cursor: pointer; }
+.desk.moving .tile { transition-duration: calc(.16s * var(--k)); }
 .desk.open .win { pointer-events: auto; cursor: pointer; border-radius: calc(var(--u) * 1.2); }
-.desk.moving .win { transition-duration: .16s; }
-.desk.instant .win, .desk.instant .label { transition: none !important; }
+.desk.moving .win { transition-duration: calc(.16s * var(--k)); }
+.desk.instant .win, .desk.instant .label, .desk.instant .tile { transition: none !important; }
 .label {
   position: absolute; left: 0; top: 0; z-index: 3; display: flex; align-items: center; gap: calc(var(--u) * .7);
   white-space: nowrap; font: 500 calc(var(--u) * 1.25)/1 var(--body); color: var(--dim);
-  opacity: 0; pointer-events: none; transition: transform .26s cubic-bezier(.2, .8, .2, 1), opacity .2s;
+  opacity: 0; pointer-events: none; transition: transform calc(.26s * var(--k)) cubic-bezier(.2, .8, .2, 1), opacity calc(.2s * var(--k));
 }
 .label .ico { width: calc(var(--u) * 2); height: calc(var(--u) * 2); font-size: calc(var(--u) * .9); }
 .label.on { color: #fff; }
-.desk.moving .label { transition-duration: .16s; }
+.desk.moving .label { transition-duration: calc(.16s * var(--k)); }
 .strip {
   position: absolute; z-index: 3; left: 50%; bottom: calc(var(--u) * 3.4); transform: translateX(-50%);
   display: flex; gap: calc(var(--u) * .5); padding: calc(var(--u) * .5); border-radius: calc(var(--u) * .9);
@@ -148,6 +158,14 @@ h2 { font: 700 clamp(26px, 3.6vw, 40px)/1.15 var(--display); letter-spacing: -.0
 .controls button.pressed kbd { background: var(--bg); color: var(--fg); border-color: var(--bg); }
 .status { text-align: center; color: var(--faint); font: 12.5px var(--mono); margin: 12px 0 0; min-height: 1.6em; }
 .status b { color: var(--accent); font-weight: 500; }
+/* The same settings as the tray menu, applied to the demo. */
+.opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px; margin: 16px auto 0; max-width: 980px; }
+.opts div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.opts span { font: 500 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-right: 6px; }
+.opts button { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--dim); font: 500 12.5px var(--body); cursor: pointer; }
+.opts button:hover { color: var(--fg); border-color: var(--faint); }
+.opts button.on { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.keys strong { color: var(--fg); font-weight: 500; }
 .reset { display: block; margin: 6px auto 0; padding: 4px 8px; border: 0; background: none; color: var(--faint); font: 12px var(--mono); cursor: pointer; opacity: .7; }
 .reset:hover { opacity: 1; color: var(--dim); text-decoration: underline; text-underline-offset: 3px; }
 /* Marks the desktop as a playground: a corner tag, and a live dot while it plays itself. */
@@ -200,6 +218,8 @@ footer svg { width: 18px; height: 18px; }
 @media (max-width: 560px) {
   .controls button { padding: 9px 11px; }
   .hud { display: none; }
+  .opts div { justify-content: center; }
+  .opts span { width: 100%; text-align: center; margin: 0 0 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -264,6 +284,11 @@ footer svg { width: 18px; height: 18px; }
         <button type="button" id="b-esc"><kbd>Esc</kbd> cancel</button>
       </div>
       <p class="status" id="status" aria-live="polite">Press Tab, or the first button.</p>
+      <div class="opts" id="opts" aria-label="Demo settings, the same as Wade's tray menu">
+        <div><span>Animation</span><button type="button" data-o="speed" data-v="0">Fast</button><button type="button" data-o="speed" data-v="1">Normal</button><button type="button" data-o="speed" data-v="2">Slow</button><button type="button" data-o="speed" data-v="3">Off</button></div>
+        <div><span>Card size</span><button type="button" data-o="size" data-v="0">Large</button><button type="button" data-o="size" data-v="1">Medium</button><button type="button" data-o="size" data-v="2">Small</button><button type="button" data-o="size" data-v="3">Icons only</button></div>
+        <div><span>Background</span><button type="button" data-o="bg" data-v="0">Black</button><button type="button" data-o="bg" data-v="1">75%</button><button type="button" data-o="bg" data-v="2">50%</button><button type="button" data-o="bg" data-v="3">25%</button></div>
+      </div>
       <button class="reset" id="reset" type="button">reset demo</button>
     </div>
   </section>
@@ -280,7 +305,7 @@ footer svg { width: 18px; height: 18px; }
         <article><span class="tag">tap</span><h3>Quick switch</h3><p>A fast Alt+Tab, pressed and released, jumps straight to the previous window without drawing anything.</p></article>
         <article><span class="tag">↑ close</span><h3>Close from the row</h3><p>Press <kbd>↑</kbd> or <kbd>Delete</kbd>, or drag the middle card up, to close a window without leaving the switcher.</p></article>
         <article><span class="tag">motion</span><h3>Zooms where it should</h3><p>Your window shrinks into the row from where it sits, and the card you pick grows back onto the real window. With Windows animations off, Wade skips them too.</p></article>
-        <article><span class="tag">startup</span><h3>Starts with Windows</h3><p>On by default and switchable from the tray icon. No admin rights, no network, no files written, no code injected into other apps.</p></article>
+        <article><span class="tag">admin</span><h3>Works over games</h3><p>Wade runs as administrator by default, so Alt+Tab also works while a game or launcher run as administrator has focus. It asks once, on the first start.</p></article>
       </div>
     </div>
   </section>
@@ -297,9 +322,28 @@ footer svg { width: 18px; height: 18px; }
         <div><b>let go of <kbd>Alt</kbd> <kbd>Enter</kbd> click</b><span>switch</span></div>
         <div><b><kbd>↑</kbd> <kbd>Delete</kbd> drag up</b><span>close that window</span></div>
         <div><b><kbd>Esc</kbd></b><span>cancel</span></div>
-        <div><b>tray icon</b><span>start with Windows, exit</span></div>
+        <div><b>tray icon</b><span>settings, start with Windows, exit</span></div>
       </div>
       <p class="note">The row loops: from the last card back to the first.</p>
+    </div>
+  </section>
+
+  <section class="block" id="settings">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow">Settings</p>
+        <h2>Make it yours, from the tray icon.</h2>
+        <p>Right-click the Wade icon in the tray. The first three can be tried in the demo above.</p>
+      </div>
+      <div class="keys">
+        <div><b>Animation speed</b><span><strong>Fast</strong>, Normal, Slow, Off</span></div>
+        <div><b>Card size</b><span><strong>Large</strong>, Medium, Small, Icons only</span></div>
+        <div><b>Background</b><span>Black, 75%, <strong>50%</strong>, 25% darker</span></div>
+        <div><b>Start with Windows</b><span><strong>on</strong>, off</span></div>
+        <div><b>Run as administrator</b><span><strong>on</strong>, off</span></div>
+        <div><b>Exit</b><span>closes Wade</span></div>
+      </div>
+      <p class="note">Defaults are in bold. Icons only shows app icons and titles instead of live previews.</p>
     </div>
   </section>
 
@@ -314,7 +358,7 @@ footer svg { width: 18px; height: 18px; }
         <div class="term-head"><span>powershell</span><button class="copy" id="copy" type="button">copy</button></div>
         <pre><span class="accent">❯</span> <code id="cmd">irm https://raw.githubusercontent.com/erfjab/wade/master/install.ps1 | iex</code></pre>
       </div>
-      <p class="note">Installs to %LOCALAPPDATA%\Programs\Wade. Windows 10 and 11.</p>
+      <p class="note">Installs to %LOCALAPPDATA%\Programs\Wade. On the first start Wade asks once for administrator rights. Windows 10 and 11.</p>
     </div>
   </section>
 
@@ -682,6 +726,20 @@ else {
   drawAll();
   document.fonts.ready.then(drawAll);
 
+  // Icon tiles for "Icons only".
+  const tiles = new Map();
+  for (const app of W.apps) {
+    const t = document.createElement("div");
+    t.className = "tile"; t.dataset.id = app.id; t.innerHTML = icoHTML(app);
+    desk.appendChild(t);
+    tiles.set(app.id, t);
+  }
+  // The tray menu's settings, applied to the demo. Defaults match Wade's.
+  const OPT = { speed: 0, size: 0, bg: 2 };
+  const SPEED_K = [0.6, 1, 1.6, 0], SIZE_K = [1, 0.78, 0.58], BG_KEEP = [0, 0.25, 0.5, 0.75];
+  const icons = () => OPT.size === 3;
+  const ms = (t) => t * SPEED_K[OPT.speed];
+
   let order = W.apps.map((a) => a.id); // most recently used first
   let open = false, sel = 0, dw = 0, dh = 0, settleTimer = 0, closeTimer = 0;
 
@@ -695,12 +753,13 @@ else {
 
   function rects() {
     const winH = dh * 0.94, aspect = dw / winH;
-    const cw = Math.min(dh * CARD_HEIGHT * aspect, dw * CARD_MAX_WIDTH);
+    const k = icons() ? 1 : SIZE_K[OPT.size];
+    const cw = icons() ? dw * 0.13 : Math.min(dh * CARD_HEIGHT * k * aspect, dw * CARD_MAX_WIDTH * k);
     const sw = cw * SIDE_SCALE, gap = dw * GAP, step = cw / 2 + gap + sw / 2;
     const n = order.length;
     return order.map((id, i) => {
       const d = wrapD(i - sel, n), ad = Math.abs(d);
-      const w = ad ? sw : cw, s = w / dw, h = winH * s;
+      const w = ad ? sw : cw, s = w / dw, h = icons() ? w : winH * s;
       const cx = dw / 2 + (ad ? Math.sign(d) * (step + (ad - 1) * (sw + gap)) : 0);
       const cy = dh * ROW_CENTER_Y;
       return { id, d, x: cx - w / 2, y: cy - h / 2, w, h, s };
@@ -723,6 +782,7 @@ else {
         el.style.transform = "none";
         el.style.zIndex = id === order[0] ? 3 : 2;
         labels.get(id).style.opacity = 0;
+        tiles.get(id).style.opacity = 0;
       }
       return;
     }
@@ -737,10 +797,23 @@ else {
       const hidden = n > 5 && ad >= 3;
       el.classList.remove("front");
       el.style.zIndex = 3;
-      el.style.opacity = hidden ? 0 : ad ? SIDE_ALPHA : 1;
-      el.style.transform = `translate(${r.x}px, ${r.y}px) scale(${r.s})`;
+      const tile = tiles.get(r.id);
+      if (icons()) {
+        // No live preview: the windows stay where they are under the backdrop, the tiles move.
+        if (mode === "open") { tile.style.transition = "none"; tile.style.transform = `translate(${r.x}px, ${r.y + dh * 0.015}px) scale(${r.w / 100 * 0.97})`; tile.offsetWidth; tile.style.transition = ""; }
+        if (jump) tile.style.transition = "none";
+        el.style.opacity = 0; el.style.transform = "none";
+        tile.style.opacity = hidden ? 0 : ad ? SIDE_ALPHA : 1;
+        tile.style.transform = `translate(${r.x}px, ${r.y}px) scale(${r.w / 100})`;
+        if (jump) { tile.offsetWidth; tile.style.transition = ""; }
+      } else {
+        tile.style.opacity = 0;
+        el.style.opacity = hidden ? 0 : ad ? SIDE_ALPHA : 1;
+        el.style.transform = `translate(${r.x}px, ${r.y}px) scale(${r.s})`;
+      }
       lab.classList.toggle("on", !ad);
-      lab.style.opacity = hidden ? 0 : 1;
+      // With icon tiles only the middle one is titled; side titles would overlap.
+      lab.style.opacity = hidden || (icons() && ad) ? 0 : 1;
       const lw = Math.min(lab.scrollWidth, Math.max(r.w, dw * 0.24));
       lab.style.maxWidth = lw + "px";
       lab.style.transform = `translate(${r.x + r.w / 2 - lw / 2}px, ${r.y - dw * 0.016 - lab.offsetHeight}px)`;
@@ -749,7 +822,7 @@ else {
     strip.innerHTML = order.map((id, i) => `<button type="button" data-i="${i}" class="${i === sel ? "on" : ""}" aria-label="${byId(id).name}">${icoHTML(byId(id))}</button>`).join("");
     desk.classList.remove("settled");
     clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => desk.classList.add("settled"), mode === "move" ? 170 : 270);
+    settleTimer = setTimeout(() => desk.classList.add("settled"), ms(mode === "move" ? 170 : 270));
     desk.setAttribute("aria-label", `Wade switcher open on ${byId(order[sel]).title}, ${sel + 1} of ${n}.`);
   }
 
@@ -783,8 +856,9 @@ else {
     desk.classList.remove("open", "moving", "settled");
     el.classList.add("front"); el.style.opacity = 1; el.style.transform = "none";
     for (const l of labels.values()) l.style.opacity = 0;
+    for (const t of tiles.values()) t.style.opacity = 0;
     clearTimeout(closeTimer);
-    closeTimer = setTimeout(() => render(), 240);
+    closeTimer = setTimeout(() => render(), ms(240));
     say(`Switched to ${byId(id).name}.`);
   }
   function cancel() {
@@ -795,7 +869,7 @@ else {
   }
   function closeWin() {
     if (!open) return;
-    const id = order[sel], el = wins.get(id);
+    const id = order[sel], el = (icons() ? tiles : wins).get(id);
     el.style.transform += ` translateY(-30%)`;
     el.style.opacity = 0;
     labels.get(id).style.opacity = 0;
@@ -830,7 +904,7 @@ else {
   // Pointer: click the middle card to switch, a side card to select it, drag the middle card up to close.
   let drag = null;
   desk.addEventListener("pointerdown", (e) => {
-    const s = e.target.closest(".strip button"), t = e.target.closest(".taskbar button"), w = e.target.closest(".win");
+    const s = e.target.closest(".strip button"), t = e.target.closest(".taskbar button"), w = e.target.closest(".win, .tile");
     if (s) { sel = Number(s.dataset.i); render("move"); say(byId(order[sel]).title); return; }
     if (t && !open) { const id = t.dataset.id; order = [id, ...order.filter((x) => x !== id)]; render(); say(`${byId(id).name} to the front.`); return; }
     if (!open || !w) return;
@@ -868,6 +942,21 @@ else {
     desk.classList.add("instant"); render(); desk.offsetWidth; desk.classList.remove("instant");
   }
   $("reopen").onclick = () => { reset(); say("All windows are back."); };
+
+  function applyOpts() {
+    desk.style.setProperty("--k", SPEED_K[OPT.speed]);
+    desk.classList.toggle("icons", icons());
+    $("veil").style.filter = `brightness(${BG_KEEP[OPT.bg]})`;
+    for (const b of document.querySelectorAll("#opts button")) b.classList.toggle("on", OPT[b.dataset.o] === Number(b.dataset.v));
+  }
+  $("opts").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    OPT[b.dataset.o] = Number(b.dataset.v);
+    applyOpts();
+    if (open) { desk.classList.add("instant"); render(); desk.offsetWidth; desk.classList.remove("instant"); }
+    say(`${b.parentElement.firstElementChild.textContent}: ${b.textContent}`);
+  });
+  applyOpts();
 
   // Autoplay: until someone touches it, the demo presses its own buttons, so it reads as something to try.
   const SCRIPT = ["b-next", "b-next", "b-next", "b-go", 0, "b-next", "b-next", "b-prev", "b-go", 0, "b-next", "b-next", "b-next", "b-next", "b-esc", 0];
