@@ -705,7 +705,9 @@ impl Switcher {
             // from zero left the screen looking unchanged for ~100 ms.
             let f = if self.fade_to > self.fade_from { 1.0 - (1.0 - (t / FADE_PART).min(1.0)).powi(3) } else { ((t - 1.0) / FADE_PART + 1.0).max(0.0) };
             self.alpha = self.fade_from + (self.fade_to - self.fade_from) * f;
-            SetLayeredWindowAttributes(self.hwnd, 0, (self.alpha.clamp(0.0, 1.0) * 255.0) as u8, LWA_ALPHA);
+            // Never fully opaque: a full-screen opaque window counts as covering the
+            // windows below it, and apps that pause while covered freeze their previews.
+            SetLayeredWindowAttributes(self.hwnd, 0, (self.alpha.clamp(0.0, 1.0) * 254.0) as u8, LWA_ALPHA);
         }
         let dragging = self.drag.is_some();
         for (i, c) in self.cards.iter_mut().enumerate() {
