@@ -148,7 +148,9 @@ unsafe fn submenu(items: &[&str], base: usize, current: u32) -> HMENU {
 unsafe fn show_menu(hwnd: HWND) {
     let menu = CreatePopupMenu();
     let check = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
-    let admin = admin_mode();
+    // The real state: set to administrator but running without it (the UAC prompt or
+    // the task failed) shows unchecked, so clicking it asks again.
+    let admin = admin_mode() && is_elevated();
     let speed = submenu(&SPEEDS, CMD_SPEED, SPEED.load(Ordering::Relaxed));
     let size = submenu(&SIZES, CMD_SIZE, SIZE.load(Ordering::Relaxed));
     AppendMenuW(menu, MF_POPUP, speed as usize, wide("Animation speed").as_ptr());
